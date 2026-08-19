@@ -1,17 +1,20 @@
 #include <QtQuick>
 #include <sailfishapp.h>
 
+#include "fileio.h"
+
 int main(int argc, char *argv[])
 {
-    // SailfishApp::main() will display "qml/harbour-fiatmos.qml", if you need more
-    // control over initialization you can use:
-    //
-    //   - SailfishApp::application(int, char *[]) to get the QGuiApplication *
-    //   - SailfishApp::createView() to get a new QQuickView * instance
-    //   - SailfishApp::pathTo(QString) to get a QUrl to a resource file
-    //   - SailfishApp::pathToMainQml() to get a QUrl to the main QML file
-    //
-    // To display the view, call "show()" (will show fullscreen on device).
+    // The long form rather than SailfishApp::main(), for one reason: a type
+    // has to be registered before the QML is loaded, and main() gives no
+    // hook between the two. Everything else here is what main() would do.
+    QScopedPointer<QGuiApplication> app(SailfishApp::application(argc, argv));
 
-    return SailfishApp::main(argc, argv);
+    qmlRegisterType<FileIO>("se.munkstolen.fiatmos", 1, 0, "FileIO");
+
+    QScopedPointer<QQuickView> view(SailfishApp::createView());
+    view->setSource(SailfishApp::pathToMainQml());
+    view->show();
+
+    return app->exec();
 }

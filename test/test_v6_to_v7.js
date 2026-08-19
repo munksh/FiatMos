@@ -42,7 +42,9 @@ const v = S.init()
 let fails = 0
 const ok = (n, c, e) => { if (!c) { fails++; console.log('FAIL ' + n + (e !== undefined ? ' -> ' + JSON.stringify(e) : '')) } else console.log('ok   ' + n) }
 
-ok('v6 database upgrades to v7', v === 7, v)
+// >= 7 rather than === 7: this file is about what migration 7 does to the
+// data, and a later migration appended to the chain must not fail it.
+ok('v6 database upgrades to at least v7', v >= 7, v)
 const all = S.items({ includePrivate: true })
 ok('every item survived', all.length === before.books, all.length)
 ok('titles survived', all.map(i => i.title).sort().join(',') === 'Lodge text,Meditations,Toccata')

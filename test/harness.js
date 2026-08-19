@@ -37,7 +37,7 @@ const LS = { LocalStorage: { openDatabaseSync: () => fakeDb } }
 
 const sandbox = { LS, console, Date, Math, parseInt, parseFloat, isNaN, JSON }
 vm.createContext(sandbox)
-vm.runInContext(src + '\n;globalThis.__S = { init, addHabit, getHabit, allHabits, archiveHabit, loadHabits, addEntry, voidEntry, entriesOnDay, entriesSince, streak, completionRate, series, deviationFromTarget, unloggedTodayCount, activeHabitCount, dayKey, weekKey, addDays, localIso, currentVersion, formatEntry }', sandbox)
+vm.runInContext(src + '\n;globalThis.__S = { init, addHabit, getHabit, allHabits, archiveHabit, loadHabits, addEntry, voidEntry, entriesOnDay, entriesSince, loadEntriesForDay, streak, completionRate, series, deviationFromTarget, unloggedTodayCount, activeHabitCount, dayKey, weekKey, addDays, localIso, currentVersion, formatEntry, isDueToday, addReferenceEntry, itemTitleForEntry, routines, addRoutine, lastSession, saveSession, sessionSummary, loadSessionHistory, updateHabit, todayProgress, dayCompletion, sectionRank, addItem, updateItem, items, itemsForHabit, loadItems, setItemState, itemTags, setItemTags, allTags, tagTotals, loadTagTotals, kindTotals, loadKindTotals, exportAll, importAll, describeImport, newUid, itemLogCount, isActiveState, normaliseTag, parseTags, kinds, kindById, addKind, kindUnit, kindLabel, starterKinds, STARTER_KINDS, unitForHabit, habitTotal }', sandbox)
 
 module.exports = { S: sandbox.__S, sqlite, mkModel: () => {
   const m = []

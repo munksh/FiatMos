@@ -179,6 +179,13 @@ Page {
                 color: FiatMosTheme.primaryText
                 onClicked: FiatMosTheme.setAmbient(!FiatMosTheme.ambient)
             }
+            // Low in the menu on purpose: rarely wanted, and one of the two
+            // things in this app that can lose data.
+            MenuItem {
+                text: qsTr("Backup")
+                color: FiatMosTheme.primaryText
+                onClicked: pageStack.animatorPush(Qt.resolvedUrl("BackupPage.qml"))
+            }
             MenuItem {
                 text: qsTr("Library")
                 color: FiatMosTheme.primaryText

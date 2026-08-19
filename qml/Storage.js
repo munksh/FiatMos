@@ -155,8 +155,55 @@ var MIGRATIONS = [
             "ALTER TABLE habit ADD COLUMN kind_id INTEGER REFERENCES item_kind(id)",
             "UPDATE habit SET kind_id = (SELECT id FROM item_kind WHERE name = 'book') WHERE value_type = 'reference' AND kind_id IS NULL"
         ]
+    },
+    {
+        version: 8,
+        // Identity, for export and import.
+        //
+        // A row's id is a local counter. It says nothing about the row on
+        // another phone, so an exported file cannot be matched against an
+        // existing database by id -- and log_entry has no natural key either.
+        // "Reading, 24 pages, 18 August" can legitimately be two entries.
+        //
+        // So every row that can travel gets a uid: an opaque string, made
+        // once when the row is created, never changed, meaningless except as
+        // identity.
+        //
+        // EXISTING ROWS ARE LEFT AT NULL, DELIBERATELY. Backfilling would
+        // mean an UPDATE against log_entry, and this file has exactly one
+        // rule it will not bend. A NULL uid means "local only, never matched"
+        // -- which is the truth about a row that existed before identity did.
+        //
+        // Every table at once, because the cost is identical today and
+        // asymmetric later: the one left out is the one you will want.
+        // item_tag and log_entry_item need none -- they are derivable from
+        // their parents' uids plus the tag string.
+        statements: [
+            "ALTER TABLE habit ADD COLUMN uid TEXT",
+            "ALTER TABLE item_kind ADD COLUMN uid TEXT",
+            "ALTER TABLE item ADD COLUMN uid TEXT",
+            "ALTER TABLE log_entry ADD COLUMN uid TEXT",
+            "ALTER TABLE routine ADD COLUMN uid TEXT",
+            "ALTER TABLE session ADD COLUMN uid TEXT",
+            "ALTER TABLE component ADD COLUMN uid TEXT",
+            "ALTER TABLE detail ADD COLUMN uid TEXT",
+            "CREATE INDEX IF NOT EXISTS idx_habit_uid ON habit(uid)",
+            "CREATE INDEX IF NOT EXISTS idx_log_entry_uid ON log_entry(uid)",
+            "CREATE INDEX IF NOT EXISTS idx_item_uid ON item(uid)"
+        ]
     }
 ]
+
+// An opaque identity for a row, made once and never changed.
+//
+// Not a real UUID -- QML's JS engine has no crypto source, and this does not
+// need to resist an adversary. It needs to not collide between two phones
+// owned by the same person, and 96 bits of time plus randomness does that
+// with room to spare.
+function newUid() {
+    function chunk() { return Math.floor(Math.random() * 0x100000000).toString(36) }
+    return Date.now().toString(36) + "-" + chunk() + "-" + chunk()
+}
 
 function currentVersion() {
     var v = 0
@@ -248,7 +295,7 @@ function weekKey(d) {
 function addHabit(h) {
     var id = -1
     db().transaction(function(tx) {
-        var r = tx.executeSql("INSERT INTO habit (name, value_type, unit, scale_max, target_value, frequency, frequency_n, detail_profile, reference_kind, daily_target, time_of_day, kind_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        var r = tx.executeSql("INSERT INTO habit (name, value_type, unit, scale_max, target_value, frequency, frequency_n, detail_profile, reference_kind, daily_target, time_of_day, kind_id, uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                               [h.name,
                                h.valueType,
                                (h.unit === undefined || h.unit === "") ? null : h.unit,
@@ -260,7 +307,8 @@ function addHabit(h) {
                                h.referenceKind === undefined ? null : h.referenceKind,
                                (h.dailyTarget === undefined || h.dailyTarget === "") ? null : h.dailyTarget,
                                (h.timeOfDay === undefined || h.timeOfDay === "") ? null : h.timeOfDay,
-                               (h.kindId === undefined || h.kindId < 0) ? null : h.kindId])
+                               (h.kindId === undefined || h.kindId < 0) ? null : h.kindId,
+                               newUid()])
         id = r.insertId
     })
     return id
@@ -485,8 +533,8 @@ function addEntry(habit, values) {
     var supersedes = (values && values.supersedes) ? values.supersedes : null
 
     db().transaction(function(tx) {
-        var r = tx.executeSql("INSERT INTO log_entry (habit_id, logged_at, value_type, value_bool, value_numeric, value_scale, superseded_by, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                              [habit.id, now, habit.valueType, vBool, vNum, vScale, supersedes, note])
+        var r = tx.executeSql("INSERT INTO log_entry (habit_id, logged_at, value_type, value_bool, value_numeric, value_scale, superseded_by, note, uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                              [habit.id, now, habit.valueType, vBool, vNum, vScale, supersedes, note, newUid()])
         id = r.insertId
     })
     return id
@@ -497,8 +545,8 @@ function addEntry(habit, values) {
 function voidEntry(habitId, entryId) {
     var id = -1
     db().transaction(function(tx) {
-        var r = tx.executeSql("INSERT INTO log_entry (habit_id, logged_at, value_type, superseded_by) VALUES (?, ?, 'void', ?)",
-                              [habitId, localIso(new Date()), entryId])
+        var r = tx.executeSql("INSERT INTO log_entry (habit_id, logged_at, value_type, superseded_by, uid) VALUES (?, ?, 'void', ?, ?)",
+                              [habitId, localIso(new Date()), entryId, newUid()])
         id = r.insertId
     })
     return id
@@ -652,8 +700,8 @@ function addKind(name, unit) {
         if (e.rows.length > 0) {
             id = e.rows.item(0).id
         } else {
-            var r = tx.executeSql("INSERT INTO item_kind (name, unit) VALUES (?, ?)",
-                                  [clean, unit === undefined ? "" : String(unit).trim()])
+            var r = tx.executeSql("INSERT INTO item_kind (name, unit, uid) VALUES (?, ?, ?)",
+                                  [clean, unit === undefined ? "" : String(unit).trim(), newUid()])
             id = r.insertId
         }
     })
@@ -701,7 +749,7 @@ function unitForHabit(habit) {
 function addItem(o) {
     var id = -1
     db().transaction(function(tx) {
-        var r = tx.executeSql("INSERT INTO item (title, creator, kind_id, state, private, started_at) VALUES (?, ?, ?, ?, ?, ?)",
+        var r = tx.executeSql("INSERT INTO item (title, creator, kind_id, state, private, started_at, uid) VALUES (?, ?, ?, ?, ?, ?, ?)",
                               [o.title,
                                (o.creator === undefined || o.creator === "") ? null : o.creator,
                                (o.kindId === undefined || o.kindId < 0) ? null : o.kindId,
@@ -711,7 +759,8 @@ function addItem(o) {
                                // to it later.
                                "active",
                                o.private ? 1 : 0,
-                               localIso(new Date())])
+                               localIso(new Date()),
+                               newUid()])
         id = r.insertId
     })
     if (o.tags !== undefined) setItemTags(id, o.tags)
@@ -1054,7 +1103,7 @@ function addRoutine(habitId, name) {
         if (e.rows.length > 0) {
             id = e.rows.item(0).id
         } else {
-            var r = tx.executeSql("INSERT INTO routine (habit_id, name) VALUES (?, ?)", [habitId, name])
+            var r = tx.executeSql("INSERT INTO routine (habit_id, name, uid) VALUES (?, ?, ?)", [habitId, name, newUid()])
             id = r.insertId
         }
     })
@@ -1106,15 +1155,15 @@ function saveSession(habit, routineId, comps, note) {
     var sessionId = -1
 
     db().transaction(function(tx) {
-        var r = tx.executeSql("INSERT INTO session (habit_id, routine_id, started_at, log_entry_id) VALUES (?, ?, ?, ?)",
-                              [habit.id, (routineId === null || routineId === undefined || routineId < 0) ? null : routineId, localIso(new Date()), entryId])
+        var r = tx.executeSql("INSERT INTO session (habit_id, routine_id, started_at, log_entry_id, uid) VALUES (?, ?, ?, ?, ?)",
+                              [habit.id, (routineId === null || routineId === undefined || routineId < 0) ? null : routineId, localIso(new Date()), entryId, newUid()])
         sessionId = r.insertId
 
         var order = 0
         for (var i = 0; i < comps.length; i++) {
             var name = (comps[i].name || "").trim()
             if (name === "") continue
-            var cr = tx.executeSql("INSERT INTO component (session_id, name, sort_order) VALUES (?, ?, ?)", [sessionId, name, order])
+            var cr = tx.executeSql("INSERT INTO component (session_id, name, sort_order, uid) VALUES (?, ?, ?, ?)", [sessionId, name, order, newUid()])
             order++
             var compId = cr.insertId
             var details = comps[i].details || []
@@ -1125,8 +1174,8 @@ function saveSession(habit, routineId, comps, note) {
                 var dur = (d.duration === "" || d.duration === undefined) ? null : d.duration
                 var dnote = (d.note === "" || d.note === undefined) ? null : d.note
                 if (reps === null && weight === null && dur === null && dnote === null) continue
-                tx.executeSql("INSERT INTO detail (component_id, reps, weight_kg, duration_sec, note) VALUES (?, ?, ?, ?, ?)",
-                              [compId, reps, weight, dur, dnote])
+                tx.executeSql("INSERT INTO detail (component_id, reps, weight_kg, duration_sec, note, uid) VALUES (?, ?, ?, ?, ?, ?)",
+                              [compId, reps, weight, dur, dnote, newUid()])
             }
         }
     })
@@ -1334,4 +1383,323 @@ function unloggedTodayCount() {
 
 function activeHabitCount() {
     return allHabits(false).length
+}
+
+// ---------------------------------------------------------------------------
+// Export and import
+// ---------------------------------------------------------------------------
+//
+// One JSON file holding the whole database. Not a copy of the SQLite file:
+// that would be opaque, uncheckable, and would fail in silence when the
+// schema versions did not match. JSON can be read by a human, validated
+// before anything is touched, and refused with a reason.
+//
+// FOREIGN KEYS TRAVEL AS UIDS, NEVER AS IDS. A row id is a local counter and
+// means nothing on another phone. Carrying ids would force the importer to
+// build a translation table and get it right for ten tables; carrying uids
+// means every reference is already the thing it refers to.
+//
+// Rows made before migration 8 have no uid. They get a synthetic one at
+// export time -- "local-log_entry-42" -- which is unique inside the file and
+// deliberately meaningless outside it. That is the honest description of a
+// row that existed before identity did: it can be moved, but it can never be
+// recognised on the far side. The alternative was backfilling real uids,
+// which would have meant an UPDATE against log_entry, and that is the one
+// rule this file does not bend.
+
+var EXPORT_FORMAT = 1
+
+function ref(table, row) {
+    if (row.uid !== null && row.uid !== undefined && row.uid !== "") return row.uid
+    return "local-" + table + "-" + row.id
+}
+
+function rowsOf(tx, sql) {
+    var r = tx.executeSql(sql)
+    var out = []
+    for (var i = 0; i < r.rows.length; i++) out.push(r.rows.item(i))
+    return out
+}
+
+// The whole database, as a plain object ready for JSON.stringify.
+function exportAll() {
+    var out = {
+        app: "fiat-mos",
+        format: EXPORT_FORMAT,
+        schemaVersion: currentVersion(),
+        exportedAt: localIso(new Date()),
+        kinds: [], habits: [], items: [], itemTags: [],
+        entries: [], entryItems: [],
+        routines: [], sessions: [], components: [], details: []
+    }
+
+    db().readTransaction(function(tx) {
+        var byId = {}          // table -> local id -> reference
+
+        function remember(table, rows) {
+            byId[table] = {}
+            for (var i = 0; i < rows.length; i++) byId[table][rows[i].id] = ref(table, rows[i])
+            return rows
+        }
+        function look(table, id) {
+            if (id === null || id === undefined) return null
+            var m = byId[table]
+            return (m && m[id] !== undefined) ? m[id] : null
+        }
+
+        var kinds = remember("item_kind", rowsOf(tx, "SELECT * FROM item_kind ORDER BY id"))
+        for (var a = 0; a < kinds.length; a++) {
+            out.kinds.push({ ref: look("item_kind", kinds[a].id),
+                             name: kinds[a].name, unit: kinds[a].unit })
+        }
+
+        var habits = remember("habit", rowsOf(tx, "SELECT * FROM habit ORDER BY id"))
+        for (var b = 0; b < habits.length; b++) {
+            var h = habits[b]
+            out.habits.push({
+                ref: look("habit", h.id), name: h.name, valueType: h.value_type,
+                unit: h.unit, scaleMax: h.scale_max, targetValue: h.target_value,
+                frequency: h.frequency, frequencyN: h.frequency_n,
+                detailProfile: h.detail_profile, dailyTarget: h.daily_target,
+                timeOfDay: h.time_of_day, kind: look("item_kind", h.kind_id),
+                archivedAt: h.archived_at, createdAt: h.created_at
+            })
+        }
+
+        var items = remember("item", rowsOf(tx, "SELECT * FROM item ORDER BY id"))
+        for (var c = 0; c < items.length; c++) {
+            var it = items[c]
+            out.items.push({
+                ref: look("item", it.id), title: it.title, creator: it.creator,
+                kind: look("item_kind", it.kind_id), state: it.state,
+                private: it.private, startedAt: it.started_at, finishedAt: it.finished_at
+            })
+        }
+
+        var tags = rowsOf(tx, "SELECT * FROM item_tag")
+        for (var d = 0; d < tags.length; d++) {
+            out.itemTags.push({ item: look("item", tags[d].item_id), tag: tags[d].tag })
+        }
+
+        // In id order, which is also chronological. That matters:
+        // superseded_by always points at an EARLIER entry, so importing in
+        // this order means the target already exists and the reference can be
+        // resolved inline -- no second pass, and therefore no UPDATE.
+        var entries = remember("log_entry", rowsOf(tx, "SELECT * FROM log_entry ORDER BY id"))
+        for (var e = 0; e < entries.length; e++) {
+            var le = entries[e]
+            out.entries.push({
+                ref: look("log_entry", le.id), habit: look("habit", le.habit_id),
+                loggedAt: le.logged_at, createdAt: le.created_at, valueType: le.value_type,
+                valueBool: le.value_bool, valueNumeric: le.value_numeric,
+                valueScale: le.value_scale, supersedes: look("log_entry", le.superseded_by),
+                note: le.note
+            })
+        }
+
+        var ei = rowsOf(tx, "SELECT * FROM log_entry_item")
+        for (var f = 0; f < ei.length; f++) {
+            out.entryItems.push({ entry: look("log_entry", ei[f].log_entry_id),
+                                  item: look("item", ei[f].item_id) })
+        }
+
+        var routines = remember("routine", rowsOf(tx, "SELECT * FROM routine ORDER BY id"))
+        for (var g = 0; g < routines.length; g++) {
+            out.routines.push({ ref: look("routine", routines[g].id),
+                                habit: look("habit", routines[g].habit_id),
+                                name: routines[g].name })
+        }
+
+        var sessions = remember("session", rowsOf(tx, "SELECT * FROM session ORDER BY id"))
+        for (var i2 = 0; i2 < sessions.length; i2++) {
+            var se = sessions[i2]
+            out.sessions.push({ ref: look("session", se.id), habit: look("habit", se.habit_id),
+                                routine: look("routine", se.routine_id),
+                                startedAt: se.started_at,
+                                entry: look("log_entry", se.log_entry_id) })
+        }
+
+        var comps = remember("component", rowsOf(tx, "SELECT * FROM component ORDER BY id"))
+        for (var j = 0; j < comps.length; j++) {
+            out.components.push({ ref: look("component", comps[j].id),
+                                  session: look("session", comps[j].session_id),
+                                  name: comps[j].name, sortOrder: comps[j].sort_order })
+        }
+
+        var details = remember("detail", rowsOf(tx, "SELECT * FROM detail ORDER BY id"))
+        for (var k = 0; k < details.length; k++) {
+            var de = details[k]
+            out.details.push({ ref: look("detail", de.id),
+                               component: look("component", de.component_id),
+                               reps: de.reps, weightKg: de.weight_kg,
+                               durationSec: de.duration_sec, note: de.note })
+        }
+    })
+
+    return out
+}
+
+// What the file says about itself, without touching anything. The import page
+// shows this and makes the user confirm before a single row is removed.
+function describeImport(data) {
+    if (data === null || data === undefined || typeof data !== "object") {
+        return { ok: false, reason: "not-a-file" }
+    }
+    if (data.app !== "fiat-mos") return { ok: false, reason: "wrong-app" }
+    if (data.format > EXPORT_FORMAT) return { ok: false, reason: "too-new" }
+    return {
+        ok: true,
+        exportedAt: data.exportedAt || "",
+        habits: (data.habits || []).length,
+        entries: (data.entries || []).length,
+        items: (data.items || []).length,
+        sessions: (data.sessions || []).length
+    }
+}
+
+// REPLACE, not merge. Everything currently in the database is removed and the
+// file becomes the database.
+//
+// The deletes here are the only ones in this file, and they are deliberate:
+// this is not the logging path, it is the user saying "make this phone look
+// like that file". Undo is not a new row here -- undo is the export you took
+// first, which is why the page insists on one.
+function importAll(data) {
+    var check = describeImport(data)
+    if (!check.ok) return check
+
+    var counts = { habits: 0, entries: 0, items: 0 }
+
+    db().transaction(function(tx) {
+        // Children first, so no statement ever leaves a dangling reference.
+        tx.executeSql("DELETE FROM detail")
+        tx.executeSql("DELETE FROM component")
+        tx.executeSql("DELETE FROM session")
+        tx.executeSql("DELETE FROM routine")
+        tx.executeSql("DELETE FROM log_entry_item")
+        tx.executeSql("DELETE FROM item_tag")
+        tx.executeSql("DELETE FROM log_entry")
+        tx.executeSql("DELETE FROM item")
+        tx.executeSql("DELETE FROM habit")
+        tx.executeSql("DELETE FROM item_kind")
+
+        var map = { item_kind: {}, habit: {}, item: {}, log_entry: {},
+                    routine: {}, session: {}, component: {} }
+
+        function id(table, reference) {
+            if (reference === null || reference === undefined) return null
+            var v = map[table][reference]
+            return v === undefined ? null : v
+        }
+        // A reference that came from a pre-uid row is not identity, so it is
+        // not carried into the new database as one.
+        function keep(reference) {
+            return (reference && reference.indexOf("local-") !== 0) ? reference : newUid()
+        }
+
+        var i
+        var kinds = data.kinds || []
+        for (i = 0; i < kinds.length; i++) {
+            var k = kinds[i]
+            var kr = tx.executeSql("INSERT INTO item_kind (name, unit, uid) VALUES (?, ?, ?)",
+                                   [k.name, k.unit === null ? "" : k.unit, keep(k.ref)])
+            map.item_kind[k.ref] = kr.insertId
+        }
+
+        var habits = data.habits || []
+        for (i = 0; i < habits.length; i++) {
+            var h = habits[i]
+            var hr = tx.executeSql("INSERT INTO habit (name, value_type, unit, scale_max, target_value, frequency, frequency_n, detail_profile, daily_target, time_of_day, kind_id, archived_at, created_at, uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                   [h.name, h.valueType, h.unit, h.scaleMax, h.targetValue,
+                                    h.frequency, h.frequencyN, h.detailProfile, h.dailyTarget,
+                                    h.timeOfDay, id("item_kind", h.kind), h.archivedAt,
+                                    h.createdAt || localIso(new Date()), keep(h.ref)])
+            map.habit[h.ref] = hr.insertId
+            counts.habits++
+        }
+
+        var items = data.items || []
+        for (i = 0; i < items.length; i++) {
+            var it = items[i]
+            var ir = tx.executeSql("INSERT INTO item (title, creator, kind_id, state, private, started_at, finished_at, uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                                   [it.title, it.creator, id("item_kind", it.kind),
+                                    it.state || "active", it.private ? 1 : 0,
+                                    it.startedAt, it.finishedAt, keep(it.ref)])
+            map.item[it.ref] = ir.insertId
+            counts.items++
+        }
+
+        var tags = data.itemTags || []
+        for (i = 0; i < tags.length; i++) {
+            var iid = id("item", tags[i].item)
+            if (iid === null) continue
+            tx.executeSql("INSERT INTO item_tag (item_id, tag) VALUES (?, ?)", [iid, tags[i].tag])
+        }
+
+        // In file order, which is id order, which is chronological -- so the
+        // entry a void supersedes is always already in the map.
+        var entries = data.entries || []
+        for (i = 0; i < entries.length; i++) {
+            var e = entries[i]
+            var hid = id("habit", e.habit)
+            if (hid === null) continue
+            var er = tx.executeSql("INSERT INTO log_entry (habit_id, logged_at, created_at, value_type, value_bool, value_numeric, value_scale, superseded_by, note, uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                   [hid, e.loggedAt, e.createdAt || e.loggedAt, e.valueType,
+                                    e.valueBool, e.valueNumeric, e.valueScale,
+                                    id("log_entry", e.supersedes), e.note, keep(e.ref)])
+            map.log_entry[e.ref] = er.insertId
+            counts.entries++
+        }
+
+        var ei = data.entryItems || []
+        for (i = 0; i < ei.length; i++) {
+            var eid = id("log_entry", ei[i].entry)
+            var itid = id("item", ei[i].item)
+            if (eid === null || itid === null) continue
+            tx.executeSql("INSERT INTO log_entry_item (log_entry_id, item_id) VALUES (?, ?)", [eid, itid])
+        }
+
+        var routines = data.routines || []
+        for (i = 0; i < routines.length; i++) {
+            var ro = routines[i]
+            var rhid = id("habit", ro.habit)
+            if (rhid === null) continue
+            var rr = tx.executeSql("INSERT INTO routine (habit_id, name, uid) VALUES (?, ?, ?)",
+                                   [rhid, ro.name, keep(ro.ref)])
+            map.routine[ro.ref] = rr.insertId
+        }
+
+        var sessions = data.sessions || []
+        for (i = 0; i < sessions.length; i++) {
+            var se = sessions[i]
+            var shid = id("habit", se.habit)
+            if (shid === null) continue
+            var sr = tx.executeSql("INSERT INTO session (habit_id, routine_id, started_at, log_entry_id, uid) VALUES (?, ?, ?, ?, ?)",
+                                   [shid, id("routine", se.routine), se.startedAt,
+                                    id("log_entry", se.entry), keep(se.ref)])
+            map.session[se.ref] = sr.insertId
+        }
+
+        var comps = data.components || []
+        for (i = 0; i < comps.length; i++) {
+            var co = comps[i]
+            var sid = id("session", co.session)
+            if (sid === null) continue
+            var cr = tx.executeSql("INSERT INTO component (session_id, name, sort_order, uid) VALUES (?, ?, ?, ?)",
+                                   [sid, co.name, co.sortOrder || 0, keep(co.ref)])
+            map.component[co.ref] = cr.insertId
+        }
+
+        var details = data.details || []
+        for (i = 0; i < details.length; i++) {
+            var de = details[i]
+            var cid = id("component", de.component)
+            if (cid === null) continue
+            tx.executeSql("INSERT INTO detail (component_id, reps, weight_kg, duration_sec, note, uid) VALUES (?, ?, ?, ?, ?, ?)",
+                          [cid, de.reps, de.weightKg, de.durationSec, de.note, keep(de.ref)])
+        }
+    })
+
+    counts.ok = true
+    return counts
 }

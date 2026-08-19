@@ -12,12 +12,17 @@ Comment=Habit tracker where each habit sets its own detail
 Name[sv]=Fiat Mos
 Comment[sv]=Vanedagbok där varje vana väljer sin egen detaljnivå
 
-# Sandboxing. Required by Harbour, and the honest answer here is short:
-# Fiat Mos wants nothing. No network, no camera, no microphone, no contacts,
-# no location, no reach into your documents or pictures. It reads and writes
-# one SQLite file of its own and two settings keys, and an application always
-# has those without asking. An empty Permissions list is the whole privacy
-# policy -- there is nothing to send anywhere because nothing is reachable.
+# Sandboxing. One permission, and it is here for one reason.
+#
+# Documents lets Backup write your export where you can find it, and read one
+# back on a new phone. Sailjail permissions are static -- granted at launch,
+# never requested on demand -- so there is no way to ask only when you press
+# Export. It is declared here or the feature does not exist.
+#
+# Everything else is still no. No network, so nothing can be sent anywhere.
+# No camera, no microphone, no contacts, no location, no calendar, no
+# pictures. The app reads and writes its own database, its own settings, and
+# one folder you chose to give it. That is the whole of it.
 #
 # OrganizationName and ApplicationName also decide where the sandbox puts the
 # app's data, so changing either one moves the database. Do not touch them
@@ -25,4 +30,4 @@ Comment[sv]=Vanedagbok där varje vana väljer sin egen detaljnivå
 [X-Sailjail]
 OrganizationName=se.munkstolen
 ApplicationName=harbour-fiatmos
-Permissions=
+Permissions=Documents

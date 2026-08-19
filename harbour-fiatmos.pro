@@ -17,7 +17,12 @@ TARGET = harbour-fiatmos
 
 CONFIG += sailfishapp
 
-SOURCES += src/harbour-fiatmos.cpp
+SOURCES += \
+    src/harbour-fiatmos.cpp \
+    src/fileio.cpp
+
+HEADERS += \
+    src/fileio.h
 
 # Everything listed here gets deployed to /usr/share/harbour-fiatmos/.
 # Storage.js and qmldir MUST be listed or they silently do not ship.
@@ -42,6 +47,7 @@ DISTFILES += \
     qml/pages/LibraryPage.qml \
     qml/pages/AddBookPage.qml \
     qml/pages/KindPage.qml \
+    qml/pages/BackupPage.qml \
     qml/pages/TagTotalsPage.qml \
     rpm/harbour-fiatmos.spec
 
