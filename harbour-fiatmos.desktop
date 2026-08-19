@@ -1,0 +1,28 @@
+[Desktop Entry]
+Type=Application
+X-Nemo-Application-Type=silica-qt5
+
+# Icon and Exec name the PACKAGE, never the app. What anyone sees is Name=.
+Icon=harbour-fiatmos
+Exec=/usr/bin/harbour-fiatmos
+
+Name=Fiat Mos
+Comment=Habit tracker where each habit sets its own detail
+
+Name[sv]=Fiat Mos
+Comment[sv]=Vanedagbok där varje vana väljer sin egen detaljnivå
+
+# Sandboxing. Required by Harbour, and the honest answer here is short:
+# Fiat Mos wants nothing. No network, no camera, no microphone, no contacts,
+# no location, no reach into your documents or pictures. It reads and writes
+# one SQLite file of its own and two settings keys, and an application always
+# has those without asking. An empty Permissions list is the whole privacy
+# policy -- there is nothing to send anywhere because nothing is reachable.
+#
+# OrganizationName and ApplicationName also decide where the sandbox puts the
+# app's data, so changing either one moves the database. Do not touch them
+# after a release without a plan for the file.
+[X-Sailjail]
+OrganizationName=se.munkstolen
+ApplicationName=harbour-fiatmos
+Permissions=
