@@ -23,9 +23,21 @@ Page {
 
     property string lastExport: ""
     property string message: ""
+    property string messageFrom: ""     // "export" or "import"
     property bool failed: false
 
     FileIO { id: fileIO }
+
+    // Every outcome goes through here, and every outcome names WHICH half of
+    // the page it came from. The first version had one message label at the
+    // bottom of a page taller than the screen: press Export at the top, and
+    // the answer appeared somewhere you were not looking. Silence and success
+    // looked identical, which is the worst thing a confirmation can do.
+    function report(from, bad, text) {
+        page.messageFrom = from
+        page.failed = bad
+        page.message = text
+    }
 
     function stamp() {
         var d = new Date()
@@ -36,32 +48,27 @@ Page {
     function doExport() {
         var dir = fileIO.documentsPath()
         if (dir === "") {
-            page.failed = true
-            page.message = qsTr("Cannot reach the Documents folder.")
+            page.report("export", true, qsTr("Cannot reach the Documents folder."))
             return
         }
         var path = dir + "/fiat-mos-" + stamp() + ".json"
         var text = JSON.stringify(Storage.exportAll(), null, 1)
         if (!fileIO.write(path, text)) {
-            page.failed = true
-            page.message = qsTr("Could not write the file: %1").arg(fileIO.lastError())
+            page.report("export", true, qsTr("Could not write it: %1").arg(fileIO.lastError()))
             return
         }
-        page.failed = false
         page.lastExport = path
-        page.message = qsTr("Saved to Documents as fiat-mos-%1.json").arg(stamp())
+        page.report("export", false,
+                    qsTr("Saved as fiat-mos-%1.json in Documents.").arg(stamp()))
     }
 
     function pickFile() {
-        var picker = pageStack.animatorPush(filePickerComponent)
-        if (picker === null || picker === undefined) return
-        if (picker.pageCompleted !== undefined) {
-            picker.pageCompleted.connect(function(p) {
-                p.selectedContentPropertiesChanged.connect(function() {
-                    page.offerImport(p.selectedContentProperties.filePath)
-                })
-            })
-        }
+        // The picker reports back from INSIDE the component, where `page` is
+        // already in scope. The first version wired the signal up from out
+        // here through pageCompleted, which is two indirections that both
+        // have to fire in the right order -- and when they did not, nothing
+        // happened and nothing said so.
+        pageStack.animatorPush(filePickerComponent)
     }
 
     // Read and DESCRIBE, without touching the database. The user sees what
@@ -69,8 +76,7 @@ Page {
     function offerImport(path) {
         var text = fileIO.read(path)
         if (text === "") {
-            page.failed = true
-            page.message = qsTr("Could not read that file: %1").arg(fileIO.lastError())
+            page.report("import", true, qsTr("Could not read that file: %1").arg(fileIO.lastError()))
             return
         }
 
@@ -78,24 +84,21 @@ Page {
         try {
             data = JSON.parse(text)
         } catch (e) {
-            page.failed = true
-            page.message = qsTr("That file is not readable as a Fiat Mos export.")
+            page.report("import", true, qsTr("That file is not readable as a Fiat Mos export."))
             return
         }
 
         var info = Storage.describeImport(data)
         if (!info.ok) {
-            page.failed = true
-            page.message = info.reason === "too-new"
+            page.report("import", true, info.reason === "too-new"
                 ? qsTr("That file was written by a newer version of Fiat Mos.")
-                : qsTr("That file is not a Fiat Mos export.")
+                : qsTr("That file is not a Fiat Mos export."))
             return
         }
 
         pending = data
         pendingInfo = info
-        page.failed = false
-        page.message = ""
+        page.report("import", false, "")
     }
 
     property var pending: null
@@ -106,14 +109,19 @@ Page {
         page.pending = null
         page.pendingInfo = null
         if (!res.ok) {
-            page.failed = true
-            page.message = qsTr("The import was refused.")
+            page.report("import", true, qsTr("The import was refused."))
             return
         }
-        page.failed = false
-        page.message = qsTr("Replaced with %1 habits and %2 entries.")
-            .arg(res.habits).arg(res.entries)
+        page.report("import", false,
+                    qsTr("Replaced with %1 habits and %2 entries.").arg(res.habits).arg(res.entries))
         app.touchData()
+    }
+
+    // RemorsePopup, not RemorseItem. RemorseItem covers a single list row and
+    // its execute() takes that row as its first argument; this is a page-level
+    // action with no row to cover, and the popup is what Silica uses for those.
+    RemorsePopup {
+        id: importRemorse
     }
 
     Component {
@@ -121,6 +129,11 @@ Page {
         FilePickerPage {
             nameFilters: ["*.json"]
             title: qsTr("Pick an export file")
+            onSelectedContentPropertiesChanged: {
+                if (selectedContentProperties.filePath !== undefined) {
+                    page.offerImport(selectedContentProperties.filePath)
+                }
+            }
         }
     }
 
@@ -175,6 +188,18 @@ Page {
                     selected: true
                     onClicked: page.doExport()
                 }
+            }
+
+            // Directly under the button that caused it. Not at the bottom of
+            // the page, where the answer to "did that work" is a scroll away.
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - Theme.horizontalPageMargin * 2
+                visible: page.message !== "" && page.messageFrom === "export"
+                wrapMode: Text.WordWrap
+                font.pixelSize: Theme.fontSizeSmall
+                color: page.failed ? FiatMosTheme.wrong : FiatMosTheme.accent
+                text: page.message
             }
 
             Label {
@@ -277,22 +302,16 @@ Page {
                             onClicked: importRemorse.execute(
                                 qsTr("Replacing everything"),
                                 function() { page.commitImport() })
+
                         }
                     }
                 }
             }
 
-            RemorseItem {
-                id: importRemorse
-                cancelText: qsTr("Cancel")
-            }
-
-            // -- What happened --------------------------------------------
-
             Label {
                 x: Theme.horizontalPageMargin
                 width: parent.width - Theme.horizontalPageMargin * 2
-                visible: page.message !== ""
+                visible: page.message !== "" && page.messageFrom === "import"
                 wrapMode: Text.WordWrap
                 font.pixelSize: Theme.fontSizeSmall
                 color: page.failed ? FiatMosTheme.wrong : FiatMosTheme.accent
