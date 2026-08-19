@@ -149,6 +149,20 @@ QtObject {
 
     readonly property color onAccent: markOn(accent)
 
+    // ---- the maker's mark ----
+    //
+    // Taupe, and a FIXED value: this one deliberately does not follow the
+    // ambience, for the same reason the launcher icon does not. It is
+    // Munkstolen's colour, not the app's, and a signature that changed colour
+    // with the wallpaper would not be a signature.
+    //
+    // Chosen to survive both grounds rather than to look best on one. Against
+    // the Fiat cream it measures 3.96:1, against a black ambience 4.36:1, and
+    // against a dark grey one 3.67:1 -- all above the 3:1 that graphical
+    // objects and large text need. A darker taupe reads better on paper and
+    // disappears on black; a lighter one does the reverse. This is the middle.
+    readonly property color makerMark: "#7E7566"
+
     // The wash under a pressed row or menu item. Silica would use the
     // ambience highlight here, which bleeds through Fiat colours; this keeps
     // the press in the app's own accent.

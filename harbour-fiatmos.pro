@@ -17,6 +17,11 @@ TARGET = harbour-fiatmos
 
 CONFIG += sailfishapp
 
+# Set by the rpm spec (%qmake5 "VERSION=%{version}"). The fallback is only for
+# building straight out of Qt Creator, where rpm is not involved.
+isEmpty(VERSION): VERSION = 0.0.0-dev
+DEFINES += APP_VERSION=\\\"$$VERSION\\\"
+
 SOURCES += \
     src/harbour-fiatmos.cpp \
     src/fileio.cpp
@@ -33,6 +38,7 @@ DISTFILES += \
     qml/qmldir \
     qml/components/DialogHead.qml \
     qml/components/EmptyNote.qml \
+    qml/components/MunkstolenMark.qml \
     qml/components/PageHead.qml \
     qml/components/Pill.qml \
     qml/components/ProgressRing.qml \
@@ -48,11 +54,17 @@ DISTFILES += \
     qml/pages/AddBookPage.qml \
     qml/pages/KindPage.qml \
     qml/pages/BackupPage.qml \
+    qml/pages/AboutPage.qml \
     qml/pages/TagTotalsPage.qml \
     rpm/harbour-fiatmos.spec
 
 SAILFISHAPP_ICONS = 86x86 108x108 128x128 172x172
 
 # Translations are not wired up yet; add them here when they are.
-# CONFIG += sailfishapp_i18n
+# CONFIG += sailfishapp
+
+# Set by the rpm spec (%qmake5 "VERSION=%{version}"). The fallback is only for
+# building straight out of Qt Creator, where rpm is not involved.
+isEmpty(VERSION): VERSION = 0.0.0-dev
+DEFINES += APP_VERSION=\\\"$$VERSION\\\"_i18n
 # TRANSLATIONS += translations/harbour-fiatmos-sv.ts
