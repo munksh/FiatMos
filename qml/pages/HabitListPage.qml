@@ -172,19 +172,20 @@ Page {
 
         PullDownMenu {
             highlightColor: FiatMosTheme.accent
-
-            // Always first, and it names where you are going.
             MenuItem {
-                text: FiatMosTheme.ambient ? qsTr("Fiat colours") : qsTr("Follow ambience")
+                text: qsTr("About fiat mos")
                 color: FiatMosTheme.primaryText
-                onClicked: FiatMosTheme.setAmbient(!FiatMosTheme.ambient)
+                onClicked: pageStack.animatorPush(Qt.resolvedUrl("AboutPage.qml"))
             }
-            // Low in the menu on purpose: rarely wanted, and one of the two
-            // things in this app that can lose data.
             MenuItem {
                 text: qsTr("Backup")
                 color: FiatMosTheme.primaryText
                 onClicked: pageStack.animatorPush(Qt.resolvedUrl("BackupPage.qml"))
+            }
+            MenuItem {
+                text: FiatMosTheme.ambient ? qsTr("Fiat colours") : qsTr("Follow ambience")
+                color: FiatMosTheme.primaryText
+                onClicked: FiatMosTheme.setAmbient(!FiatMosTheme.ambient)
             }
             MenuItem {
                 text: qsTr("Library")

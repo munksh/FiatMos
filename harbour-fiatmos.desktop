@@ -6,10 +6,10 @@ X-Nemo-Application-Type=silica-qt5
 Icon=harbour-fiatmos
 Exec=/usr/bin/harbour-fiatmos
 
-Name=Fiat Mos
+Name=fiat mos
 Comment=Habit tracker where each habit sets its own detail
 
-Name[sv]=Fiat Mos
+Name[sv]=fiat mos
 Comment[sv]=Vanedagbok där varje vana väljer sin egen detaljnivå
 
 # Sandboxing. One permission, and it is here for one reason.
