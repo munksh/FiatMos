@@ -183,7 +183,7 @@ Page {
                 onClicked: pageStack.animatorPush(Qt.resolvedUrl("BackupPage.qml"))
             }
             MenuItem {
-                text: FiatMosTheme.ambient ? qsTr("Fiat colours") : qsTr("Follow ambience")
+                text: FiatMosTheme.ambient ? qsTr("fiat colours") : qsTr("Follow ambience")
                 color: FiatMosTheme.primaryText
                 onClicked: FiatMosTheme.setAmbient(!FiatMosTheme.ambient)
             }
