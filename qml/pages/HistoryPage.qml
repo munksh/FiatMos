@@ -370,6 +370,17 @@ Page {
 
                             Canvas {
                                 id: chart
+
+                                // See ProgressRing: a Canvas loses its texture
+                                // while the app is in the background.
+                                Connections {
+                                    target: Qt.application
+                                    onStateChanged: {
+                                        if (Qt.application.state === Qt.ApplicationActive) chart.requestPaint()
+                                    }
+                                }
+                                onVisibleChanged: if (visible) requestPaint()
+
                                 anchors.right: parent.right
                                 anchors.top: parent.top
                                 anchors.bottom: parent.bottom

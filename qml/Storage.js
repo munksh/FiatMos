@@ -1114,6 +1114,46 @@ function addRoutine(habitId, name) {
 // Returns { id, startedAt, routineId, components: [{ name, details: [...] }] }
 // or null. Used both for the history view and for prefilling a new session --
 // prefill lives in UI state only, nothing is copied into the database.
+// Everything hanging off one session row. Shared by lastSession and
+// sessionForDay so the two can never disagree about what a session is.
+function loadSessionRow(tx, row) {
+    var s = { id: row.id, startedAt: row.started_at, routineId: row.routine_id,
+              entryId: row.log_entry_id, components: [] }
+    var c = tx.executeSql("SELECT * FROM component WHERE session_id = ? ORDER BY sort_order, id", [s.id])
+    for (var i = 0; i < c.rows.length; i++) {
+        var comp = { name: c.rows.item(i).name, details: [] }
+        var d = tx.executeSql("SELECT * FROM detail WHERE component_id = ? ORDER BY id", [c.rows.item(i).id])
+        for (var j = 0; j < d.rows.length; j++) {
+            comp.details.push({
+                reps: d.rows.item(j).reps,
+                weight: d.rows.item(j).weight_kg,
+                duration: d.rows.item(j).duration_sec,
+                note: d.rows.item(j).note === null ? "" : d.rows.item(j).note
+            })
+        }
+        s.components.push(comp)
+    }
+    return s
+}
+
+// Today's session for this habit, if there is one.
+//
+// This is what makes a workout one thing rather than a pile of saves. You do
+// one gym session a day; saving twice during it should carry on with the same
+// session, not start a second one.
+function sessionForDay(habitId, day) {
+    var s = null
+    db().readTransaction(function(tx) {
+        var r = tx.executeSql("SELECT * FROM session WHERE habit_id = ? AND substr(started_at, 1, 10) = ? ORDER BY id DESC LIMIT 1", [habitId, day])
+        if (r.rows.length > 0) s = loadSessionRow(tx, r.rows.item(0))
+    })
+    return s
+}
+
+function todaysSession(habitId) {
+    return sessionForDay(habitId, dayKey(new Date()))
+}
+
 function lastSession(habitId, routineId) {
     var s = null
     db().readTransaction(function(tx) {
@@ -1145,19 +1185,50 @@ function lastSession(habitId, routineId) {
     return s
 }
 
-// Writes one session and, in the same breath, the log_entry that makes the
-// analysis layer count the day as done. Components with no name are dropped;
-// so are detail rows where every field is empty.
+// ONE SESSION PER DAY.
+//
+// Saving twice during a workout used to write a second session and a second
+// log entry, so a Tuesday at the gym could end up as three sessions in the
+// history -- and the way to avoid that was to remember not to save, which is
+// the wrong thing to ask of somebody between sets.
+//
+// So: if today already has a session for this habit, this rewrites it. The
+// session row keeps its id, its uid and its log_entry, and the exercises and
+// sets underneath are replaced wholesale.
+//
+// That does NOT break the append-only rule. log_entry is the ledger, and there
+// is still exactly one entry for the day -- the first save wrote it and no
+// later save touches it. session, component and detail are a description of
+// what happened, not a record that it did, and a description is allowed to be
+// corrected. The DELETEs below are the only ones in this file outside import,
+// and they are scoped to the session being rewritten.
+//
+// Components with no name are dropped; so are detail rows where every field is
+// empty.
 //
 // comps: [{ name, details: [{reps, weight, duration, note}] }]
 function saveSession(habit, routineId, comps, note) {
-    var entryId = addEntry(habit, { note: note })
-    var sessionId = -1
+    var existing = todaysSession(habit.id)
+
+    // The entry is written once a day, by whichever save comes first.
+    var entryId = (existing !== null && existing.entryId !== null && existing.entryId !== undefined)
+        ? existing.entryId
+        : addEntry(habit, { note: note })
+    var sessionId = existing === null ? -1 : existing.id
 
     db().transaction(function(tx) {
-        var r = tx.executeSql("INSERT INTO session (habit_id, routine_id, started_at, log_entry_id, uid) VALUES (?, ?, ?, ?, ?)",
-                              [habit.id, (routineId === null || routineId === undefined || routineId < 0) ? null : routineId, localIso(new Date()), entryId, newUid()])
-        sessionId = r.insertId
+        var rid = (routineId === null || routineId === undefined || routineId < 0) ? null : routineId
+
+        if (existing !== null) {
+            // Children first, so nothing is left pointing at a gone parent.
+            tx.executeSql("DELETE FROM detail WHERE component_id IN (SELECT id FROM component WHERE session_id = ?)", [sessionId])
+            tx.executeSql("DELETE FROM component WHERE session_id = ?", [sessionId])
+            tx.executeSql("UPDATE session SET routine_id = ? WHERE id = ?", [rid, sessionId])
+        } else {
+            var r = tx.executeSql("INSERT INTO session (habit_id, routine_id, started_at, log_entry_id, uid) VALUES (?, ?, ?, ?, ?)",
+                                  [habit.id, rid, localIso(new Date()), entryId, newUid()])
+            sessionId = r.insertId
+        }
 
         var order = 0
         for (var i = 0; i < comps.length; i++) {

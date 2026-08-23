@@ -39,6 +39,26 @@ Item {
     onValueChanged: shown = clamped(value)
     Component.onCompleted: shown = clamped(value)
 
+
+    // A Canvas keeps its pixels in a texture, and the scene graph is free to
+    // drop that texture while the application is not showing. Nothing repaints
+    // it on the way back, so the ring simply is not there any more -- which is
+    // exactly what it looks like: an empty row where a ring used to be.
+    //
+    // Repaint when the application becomes active again, and whenever the item
+    // becomes visible. Cheap, and the alternative is a drawing that silently
+    // disappears once a day.
+    Connections {
+        target: Qt.application
+        onStateChanged: {
+            if (Qt.application.state === Qt.ApplicationActive) canvas.requestPaint()
+        }
+    }
+
+    onVisibleChanged: {
+        if (visible) canvas.requestPaint()
+    }
+
     onShownChanged: canvas.requestPaint()
     onLineWidthChanged: canvas.requestPaint()
     onFillColorChanged: canvas.requestPaint()

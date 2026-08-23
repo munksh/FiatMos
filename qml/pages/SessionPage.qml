@@ -29,7 +29,13 @@ Page {
     property int routineId: -1          // -1 = ad hoc
     property int gen: 0
     property int renamingIndex: -1      // which exercise is being renamed
+    // Which set is open as fields. Closing one re-reads the card, because the
+    // text fields write straight into `comps` and the reading row is built from
+    // a snapshot -- so without this the card still showed 8 after you typed 10,
+    // right up until the session was saved. The data was never wrong; only the
+    // card was.
     property string editingSet: ""      // "compIndex:setIndex", or empty
+    onEditingSetChanged: bump()
     property string pendingSet: ""      // the set counting down to deletion
 
     readonly property string profile: {
@@ -157,12 +163,62 @@ Page {
         if (rid < 0 && newName !== "") rid = Storage.addRoutine(habitId, newName)
 
         Storage.saveSession(habit, rid, payload, sessionNoteField.text.trim())
-        pageStack.pop()
+        page.saved = true
+    }
+
+    // Whether there is anything worth writing. An empty page that was opened
+    // and left must not create a session, or every accidental tap becomes a
+    // logged workout.
+    function worthSaving() {
+        for (var i = 0; i < comps.length; i++) {
+            if ((comps[i].name || "").trim() === "") continue
+            var d = comps[i].details || []
+            for (var j = 0; j < d.length; j++) {
+                if (num(d[j].reps) !== "" || num(d[j].weight) !== ""
+                    || num(d[j].minutes) !== "" || (d[j].note || "").trim() !== "") return true
+            }
+        }
+        return false
+    }
+
+    property bool saved: false
+
+    // Saving on the way out.
+    //
+    // This is only safe because a save now rewrites today's session instead of
+    // adding another one -- so leaving, coming back and leaving again costs
+    // nothing. It is what stops the habit of saving every few minutes "so as
+    // not to lose it", which was never a feature, only a fear.
+    //
+    // The Save button stays: it is how you say "this one is finished", and it
+    // is the only way to leave with a routine name you just typed.
+    function autosave() {
+        if (habit === null) return
+        if (!worthSaving()) return
+        save()
     }
 
     Component.onCompleted: {
         habit = Storage.getHabit(habitId)
         routineList = Storage.routines(habitId)
+
+        // Today's session first. If you are already mid-workout, the page
+        // continues where you were rather than offering last Tuesday as a
+        // template -- and Save then rewrites that same session.
+        var today = Storage.todaysSession(habitId)
+        if (today !== null && today.components.length > 0) {
+            routineId = (today.routineId === null || today.routineId === undefined) ? -1 : today.routineId
+            var next = []
+            for (var i = 0; i < today.components.length; i++) {
+                next.push({ name: today.components[i].name,
+                            details: fromStored(today.components[i].details) })
+            }
+            comps = next
+            continuing = true
+            bump()
+            return
+        }
+
         var last = Storage.lastSession(habitId, null)
         if (last !== null && last.routineId !== null && last.routineId !== undefined) {
             selectRoutine(last.routineId)
@@ -171,6 +227,15 @@ Page {
             renamingIndex = 0
             bump()
         }
+    }
+
+    // True when the page opened onto a session that already existed today.
+    property bool continuing: false
+
+    // Leaving the page writes what is there. Deactivating covers the back
+    // gesture, the home swipe and the app being closed from the switcher.
+    onStatusChanged: {
+        if (status === PageStatus.Deactivating) autosave()
     }
 
     // Fiat colours paint their own paper. Under an ambience there is no
@@ -217,7 +282,9 @@ Page {
                     var _g = page.gen
                     return page.habit === null ? "" : page.habit.name
                 }
-                subtitle: qsTr("New session")
+                // Says which of the two things is happening, because the page
+                // looks identical either way and the difference matters.
+                subtitle: page.continuing ? qsTr("today's session") : qsTr("new session")
             }
 
             // -- Routine ------------------------------------------------------
@@ -721,7 +788,10 @@ Page {
 
         Button {
             anchors.centerIn: parent
-            text: qsTr("Save session")
+            // "Finish" rather than "Save": the page saves itself on the way
+            // out now, so this button is not the thing that keeps your work.
+            // It is how you say the workout is over.
+            text: page.continuing ? qsTr("Finish session") : qsTr("Save session")
             enabled: {
                 var _g = page.gen
                 if (page.habit === null) return false
@@ -730,7 +800,10 @@ Page {
                 }
                 return false
             }
-            onClicked: page.save()
+            onClicked: {
+                page.save()
+                pageStack.pop()
+            }
         }
     }
 }

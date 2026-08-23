@@ -59,6 +59,19 @@ Canvas {
     height: width
     renderStrategy: Canvas.Immediate
 
+    // See ProgressRing: a Canvas loses its texture while the app is in the
+    // background and nothing repaints it on the way back.
+    Connections {
+        target: Qt.application
+        onStateChanged: {
+            if (Qt.application.state === Qt.ApplicationActive) root.requestPaint()
+        }
+    }
+
+    onVisibleChanged: {
+        if (visible) requestPaint()
+    }
+
     onColorChanged: requestPaint()
     onDiscColorChanged: requestPaint()
     onFrameChanged: requestPaint()

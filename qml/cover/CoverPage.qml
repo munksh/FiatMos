@@ -24,9 +24,23 @@ CoverBackground {
         onStateChanged: cover.refresh()
     }
 
-    // No background here on purpose. A cover is drawn by the home screen,
-    // and CoverBackground already provides the right backdrop for it. The
-    // Fiat gradient belongs to the app's own pages.
+    // Under an ambience: nothing. CoverBackground already gives the home
+    // screen the backdrop it expects, and painting over it would fight the
+    // wallpaper the user chose.
+    //
+    // Under Fiat colours: the paper, same as every page. The old reasoning --
+    // that a cover belongs to the home screen and not to the app -- sounded
+    // principled and produced a cover with moss numerals and dark text on a
+    // dark backdrop. If the app paints its own paper everywhere else, the
+    // cover is the one place a user sees it without opening anything.
+    Rectangle {
+        anchors.fill: parent
+        visible: !FiatMosTheme.ambient
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: FiatMosTheme.backgroundHigh }
+            GradientStop { position: 1.0; color: FiatMosTheme.backgroundLow }
+        }
+    }
 
     Column {
         anchors.centerIn: parent

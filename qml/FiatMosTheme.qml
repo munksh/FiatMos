@@ -195,7 +195,11 @@ QtObject {
         try { p.secondaryColor = secondaryText } catch (e) { }
         try { p.highlightColor = accent } catch (e) { }
         try { p.secondaryHighlightColor = Theme.rgba(accent, 0.6) } catch (e) { }
-        try { p.highlightBackgroundColor = Theme.rgba(accent, 0.3) } catch (e) { }
+        // NOT the accent. This role is what the virtual keyboard paints its
+        // keys with, and a 30% moss over light paper made the whole keyboard
+        // pale green. It is the same role that tints selected text, so it has
+        // to stay quiet: a neutral wash serves both and shouts in neither.
+        try { p.highlightBackgroundColor = Theme.rgba(primaryText, 0.12) } catch (e) { }
         try { p.errorColor = wrong } catch (e) { }
         try { p.highlightDimmerColor = ambient ? Theme.highlightDimmerColor : backgroundLow } catch (e) { }
         try { p.overlayBackgroundColor = ambient ? Theme.overlayBackgroundColor : backgroundHigh } catch (e) { }
