@@ -186,6 +186,12 @@ QtObject {
     // Assigned from JavaScript instead, a missing property is a no-op, and
     // the try/catch takes the rest. Worst case this function does nothing
     // and we are exactly where we were.
+    // KNOWN, UNRESOLVED: under Fiat colours the virtual keyboard comes out
+    // pale green. Two guesses at which role causes it have both been wrong --
+    // it is not highlightBackgroundColor. The likeliest remaining suspect is
+    // highlightColor, which the keyboard may tint its light keys with once
+    // colorScheme is forced to DarkOnLight. Cosmetic, one mode only, and it
+    // waits for evidence rather than a third guess.
     function applyPalette(item) {
         if (item === null || item === undefined) return
         var p = item.palette

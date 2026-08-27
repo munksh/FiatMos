@@ -1,0 +1,7 @@
+<services>
+    <service name="tar_git">
+    <param name="url">https://github.com/munksh/FiatMos.git</param>
+    <param name="branch">main</param>
+    <param name="revision">v1.0.0</param>
+    </service>
+</services>
