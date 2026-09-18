@@ -24,15 +24,6 @@ CoverBackground {
         onStateChanged: cover.refresh()
     }
 
-    // Under an ambience: nothing. CoverBackground already gives the home
-    // screen the backdrop it expects, and painting over it would fight the
-    // wallpaper the user chose.
-    //
-    // Under Fiat colours: the paper, same as every page. The old reasoning --
-    // that a cover belongs to the home screen and not to the app -- sounded
-    // principled and produced a cover with moss numerals and dark text on a
-    // dark backdrop. If the app paints its own paper everywhere else, the
-    // cover is the one place a user sees it without opening anything.
     Rectangle {
         anchors.fill: parent
         visible: !FiatMosTheme.ambient
@@ -42,47 +33,43 @@ CoverBackground {
         }
     }
 
-    Column {
-        anchors.centerIn: parent
-        spacing: Theme.paddingSmall
-        width: parent.width - Theme.paddingLarge * 2
-
-        // Serif, to match the wordmark. A grotesque numeral under a serif
-        // wordmark reads as two unrelated typefaces.
-        Label {
-            anchors.horizontalCenter: parent.horizontalCenter
-            text: cover.total === 0 ? "–" : cover.unlogged
-            font.pixelSize: Theme.fontSizeHuge
-            font.family: FiatMosTheme.serif
-            color: cover.unlogged > 0 ? FiatMosTheme.accent : FiatMosTheme.secondaryText
-        }
-
-        Label {
-            anchors.horizontalCenter: parent.horizontalCenter
-            horizontalAlignment: Text.AlignHCenter
-            width: parent.width
-            wrapMode: Text.WordWrap
-            font.pixelSize: Theme.fontSizeExtraSmall
-            color: FiatMosTheme.secondaryText
-            text: cover.total === 0 ? qsTr("no habits")
-                : cover.unlogged === 0 ? qsTr("all done") : qsTr("left today")
-        }
-    }
-
-    // The wordmark, lowercase serif italic, same as the app.
     Label {
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        anchors.margins: Theme.paddingMedium
-        horizontalAlignment: Text.AlignHCenter
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.top: parent.top
+        anchors.topMargin: FiatMosTheme.coverWordmarkTop
         text: "fiat mos"
+        color: FiatMosTheme.secondaryText
         font.pixelSize: Theme.fontSizeTiny
         font.family: FiatMosTheme.serif
         font.italic: true
-        color: FiatMosTheme.secondaryText
     }
 
-    // No CoverActionList yet. A "log the next due habit" action would be the
-    // obvious one, but cover icon names need verifying on the device first.
+    Column {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.leftMargin: FiatMosTheme.coverSideMargin
+        anchors.rightMargin: FiatMosTheme.coverSideMargin
+        anchors.topMargin: cover.height * FiatMosTheme.coverFigureFraction
+        spacing: Theme.paddingSmall
+
+        Label {
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            text: cover.total === 0 ? "–" : cover.unlogged
+            color: cover.unlogged > 0 ? FiatMosTheme.accent : FiatMosTheme.secondaryText
+            font.pixelSize: FiatMosTheme.coverFigureSize
+            font.family: FiatMosTheme.serif
+        }
+
+        Label {
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            text: cover.total === 0 ? qsTr("no habits")
+                : cover.unlogged === 0 ? qsTr("all done") : qsTr("left today")
+            color: FiatMosTheme.secondaryText
+            font.pixelSize: Theme.fontSizeExtraSmall
+            wrapMode: Text.WordWrap
+        }
+    }
 }

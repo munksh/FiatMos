@@ -87,7 +87,7 @@ QtObject {
     // Fiat Mos's accent: moss. Habit and growth — the thing that comes back.
     // It does not collide with this app's semantic colour, which is red;
     // see the note by offTarget below.
-    readonly property color accent: ambient ? Theme.highlightColor : "#4E6B3A"
+    readonly property color accent: ambient ? Theme.highlightColor : "#20782B"
 
     // ---- the shared paper ----
     readonly property color backgroundHigh: "#F2EFE8"
@@ -210,4 +210,10 @@ QtObject {
         try { p.highlightDimmerColor = ambient ? Theme.highlightDimmerColor : backgroundLow } catch (e) { }
         try { p.overlayBackgroundColor = ambient ? Theme.overlayBackgroundColor : backgroundHigh } catch (e) { }
     }
+
+    // Cover layout
+    readonly property real coverWordmarkTop: Theme.paddingLarge
+    readonly property real coverSideMargin: Theme.paddingLarge
+    readonly property real coverFigureFraction: 0.28
+    readonly property real coverFigureSize: Theme.fontSizeHuge
 }
