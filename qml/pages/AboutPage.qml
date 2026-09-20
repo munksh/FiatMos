@@ -3,26 +3,9 @@ import Sailfish.Silica 1.0
 import ".."
 import "../components"
 
-// Who made this, what it does with your data, and where it came from.
-//
-// Four questions in that order, and nothing else. No changelog -- that belongs
-// in the store listing and the repository, where it can be corrected. No
-// donation button. Two links.
-//
-// The lead is three examples rather than a summary. "A habit tracker where
-// each habit sets its own detail" is accurate and says nothing; flossing,
-// running and a gym session say the same thing and can be pictured.
-//
-// The privacy paragraph is the only place in the app that makes a claim about
-// itself, and it is written flat on purpose. Every app says it respects your
-// privacy; this one can point at one permission and a package with no network
-// access, so it should read as a fact and not as a promise.
-
 Page {
     id: page
 
-    // Fiat colours paint their own paper. Under an ambience there is no
-    // background at all -- the wallpaper is the background.
     Rectangle {
         anchors.fill: parent
         visible: !FiatMosTheme.ambient
@@ -95,50 +78,50 @@ Page {
                 text: qsTr("<b>mos</b> — Latin, <i>custom</i>, the way a thing is usually done. Its plural, <i>mores</i>, is where morals come from. A habit is a custom you keep with yourself.")
             }
 
-            // -- The motto -------------------------------------------------
-            //
-            // It stands on its own. It does NOT explain the icon -- the icon is
-            // a tally cut into a stone, and there is no drop in it. Two good
-            // things next to each other is enough; a connection asserted where
-            // none exists is worse than none claimed.
+            Item { width: 1; height: Theme.paddingLarge }
+
+            Rectangle {
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: Theme.itemSizeSmall
+                height: 1
+                color: FiatMosTheme.innerBorder
+            }
+
+            Item { width: 1; height: Theme.paddingMedium }
+
+            Column {
+                x: Theme.horizontalPageMargin
+                width: content.width - Theme.horizontalPageMargin * 2
+                spacing: Theme.paddingSmall
+
+                Label {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    horizontalAlignment: Text.AlignHCenter
+                    font.pixelSize: Theme.fontSizeSmall
+                    font.family: FiatMosTheme.serif
+                    font.italic: true
+                    color: FiatMosTheme.primaryText
+                    text: "Gutta cavat lapidem,\nnon vi sed saepe cadendo"
+                }
+
+                Label {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    horizontalAlignment: Text.AlignHCenter
+                    font.pixelSize: Theme.fontSizeExtraSmall
+                    color: FiatMosTheme.secondaryText
+                    text: qsTr("The drop hollows the stone, not by force but by falling often.")
+                }
+            }
 
             Item { width: 1; height: Theme.paddingMedium }
 
             Rectangle {
-                x: Theme.horizontalPageMargin
-                width: content.width - Theme.horizontalPageMargin * 2
-                height: mottoColumn.height + Theme.paddingLarge * 2
-                radius: FiatMosTheme.cardRadius
-                color: FiatMosTheme.card
-                border.color: FiatMosTheme.cardBorder
-                border.width: FiatMosTheme.cardBorderWidth
-
-                Column {
-                    id: mottoColumn
-                    anchors.centerIn: parent
-                    width: parent.width - Theme.paddingLarge * 2
-                    spacing: Theme.paddingSmall
-
-                    Label {
-                        width: parent.width
-                        wrapMode: Text.WordWrap
-                        horizontalAlignment: Text.AlignHCenter
-                        font.pixelSize: Theme.fontSizeSmall
-                        font.family: FiatMosTheme.serif
-                        font.italic: true
-                        color: FiatMosTheme.primaryText
-                        text: "Gutta cavat lapidem,\nnon vi sed saepe cadendo"
-                    }
-
-                    Label {
-                        width: parent.width
-                        wrapMode: Text.WordWrap
-                        horizontalAlignment: Text.AlignHCenter
-                        font.pixelSize: Theme.fontSizeExtraSmall
-                        color: FiatMosTheme.secondaryText
-                        text: qsTr("The drop hollows the stone, not by force but by falling often.")
-                    }
-                }
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: Theme.itemSizeSmall
+                height: 1
+                color: FiatMosTheme.innerBorder
             }
 
             // -- Privacy ---------------------------------------------------
@@ -247,55 +230,73 @@ Page {
             }
 
             // -- The family ---------------------------------------------------
-            //
-            // Every name translates itself, and the translation explains the
-            // app. That is worth more than a tagline.
 
             SectionLabel {
                 x: Theme.horizontalPageMargin
-                text: qsTr("The Fiat family")
+                text: qsTr("The fiat family")
             }
 
             Repeater {
                 model: [
-                    { name: "fiat lux", what: qsTr("let there be light — a light meter for film") },
-                    { name: "fiat vox", what: qsTr("let there be voice — a chromatic tuner") },
-                    { name: "fiat cor", what: qsTr("let there be heart — a metronome, after the first one anybody owns") },
-                    { name: "fiat mos", what: qsTr("let there be habit — this one") }
+                    { name: "fiat agenda", what: qsTr("let there be doing — a task list"), icon: "images/family/harbour-fiatagenda.png", url: "https://openrepos.net/content/munkstolen/fiat-agenda-task-list" },
+                    { name: "fiat margo", what: qsTr("let there be edge — keeps edges"), icon: "images/family/harbour-fiatmargo.png", url: "https://openrepos.net/content/munkstolen/fiat-margo-keeps-edges" },
+                    { name: "fiat glossa", what: qsTr("let there be tongue — a translator"), icon: "images/family/harbour-fiatglossa.png", url: "https://openrepos.net/content/munkstolen/fiat-glossa-a-deepl-translator" },
+                    { name: "fiat vox", what: qsTr("let there be voice — a chromatic tuner"), icon: "images/family/harbour-fiatvox.png", url: "https://openrepos.net/content/munkstolen/fiat-vox-chromatic-tuner" },
+                    { name: "fiat pons", what: qsTr("let there be bridge — a native Qobuz client"), icon: "images/family/harbour-fiatpons.png", url: "https://openrepos.net/content/munkstolen/fiat-pons-native-qobuz-client" },
+                    { name: "fiat lux", what: qsTr("let there be light — a light meter for film - Coming soon"), icon: "images/family/harbour-fiatlux.png", url: "" },
+                    { name: "fiat cor", what: qsTr("let there be heart — a metronome"), icon: "images/family/harbour-fiatcor.png", url: "https://openrepos.net/content/munkstolen/fiat-cor-a-metronome" },
+                    { name: "fiat passus", what: qsTr("let there be step — a step counter - Coming soon"), icon: "images/family/harbour-fiatpassus.png", url: "" },
+                    { name: "fiat mos", what: qsTr("let there be habit — this one"), icon: "images/family/harbour-fiatmos.png", url: "" }
                 ]
 
-                Column {
+                delegate: BackgroundItem {
+                    id: familyRow
                     x: Theme.horizontalPageMargin
                     width: content.width - Theme.horizontalPageMargin * 2
+                    height: familyText.height
+                    enabled: modelData.url !== ""
+                    highlightedColor: FiatMosTheme.highlightWash
+                    onClicked: Qt.openUrlExternally(modelData.url)
 
-                    Label {
-                        width: parent.width
-                        font.pixelSize: Theme.fontSizeSmall
-                        font.family: FiatMosTheme.serif
-                        color: FiatMosTheme.primaryText
-                        text: modelData.name
+                    readonly property real iconSlot: Theme.itemSizeSmall
+
+                    Image {
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: Math.min(familyText.height, familyRow.iconSlot)
+                        height: width
+                        source: Qt.resolvedUrl(modelData.icon)
+                        fillMode: Image.PreserveAspectFit
+                        smooth: true
+                        opacity: 1.0
                     }
 
-                    Label {
-                        width: parent.width
-                        wrapMode: Text.WordWrap
-                        font.pixelSize: Theme.fontSizeExtraSmall
-                        color: FiatMosTheme.secondaryText
-                        text: modelData.what
+                    Column {
+                        id: familyText
+                        anchors.left: parent.left
+                        anchors.leftMargin: familyRow.iconSlot + Theme.paddingMedium
+                        anchors.right: parent.right
+
+                        Label {
+                            width: parent.width
+                            font.pixelSize: Theme.fontSizeSmall
+                            font.family: FiatMosTheme.serif
+                            color: modelData.url !== "" ? FiatMosTheme.accent : FiatMosTheme.primaryText
+                            text: modelData.name
+                        }
+
+                        Label {
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                            font.pixelSize: Theme.fontSizeExtraSmall
+                            color: FiatMosTheme.secondaryText
+                            text: modelData.what
+                        }
                     }
                 }
             }
 
             Item { width: 1; height: Theme.paddingMedium }
-
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - Theme.horizontalPageMargin * 2
-                wrapMode: Text.WordWrap
-                font.pixelSize: Theme.fontSizeTiny
-                color: FiatMosTheme.secondaryText
-                text: qsTr("Four instruments that measure something you would otherwise guess at. They share a look, a palette and a stubbornness about staying on your own phone.")
-            }
 
             // -- Version ---------------------------------------------------
             //
@@ -317,10 +318,6 @@ Page {
             }
 
             // -- Colophon --------------------------------------------------
-            //
-            // A printer's mark at the end of a book: a short rule, the mark,
-            // the wordmark. Nothing here is tappable -- the links are up under
-            // "made by". This is the signature, not a button.
 
             Item { width: 1; height: Theme.itemSizeExtraSmall }
 

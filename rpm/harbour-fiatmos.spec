@@ -1,6 +1,6 @@
 Name:       harbour-fiatmos
 Summary:    Habit tracker where each habit sets its own detail
-Version:    1.0.0
+Version:    1.1
 Release:    1
 License:    MIT
 URL:        https://github.com/munksh/FiatMos

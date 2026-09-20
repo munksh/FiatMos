@@ -186,12 +186,16 @@ QtObject {
     // Assigned from JavaScript instead, a missing property is a no-op, and
     // the try/catch takes the rest. Worst case this function does nothing
     // and we are exactly where we were.
-    // KNOWN, UNRESOLVED: under Fiat colours the virtual keyboard comes out
-    // pale green. Two guesses at which role causes it have both been wrong --
-    // it is not highlightBackgroundColor. The likeliest remaining suspect is
-    // highlightColor, which the keyboard may tint its light keys with once
-    // colorScheme is forced to DarkOnLight. Cosmetic, one mode only, and it
-    // waits for evidence rather than a third guess.
+    //
+    // NOT the virtual keyboard, whatever this role's name suggests. Four
+    // attempts to tint the keyboard through it -- a translucent accent wash,
+    // a translucent neutral wash, and two different opaque accent-blends --
+    // each produced literally zero visible change, which is the signature of
+    // a property nothing is reading, not a property reading the wrong value.
+    // The keyboard is a separate surface (Maliit/FutoKeyboard) that reads
+    // Theme.* -- the system ambience -- directly, exactly as this comment
+    // already said above for menus and sliders. It cannot be reached from an
+    // app's palette, so this project does not try. It follows the ambience.
     function applyPalette(item) {
         if (item === null || item === undefined) return
         var p = item.palette
@@ -201,13 +205,10 @@ QtObject {
         try { p.secondaryColor = secondaryText } catch (e) { }
         try { p.highlightColor = accent } catch (e) { }
         try { p.secondaryHighlightColor = Theme.rgba(accent, 0.6) } catch (e) { }
-        // NOT the accent. This role is what the virtual keyboard paints its
-        // keys with, and a 30% moss over light paper made the whole keyboard
-        // pale green. It is the same role that tints selected text, so it has
-        // to stay quiet: a neutral wash serves both and shouts in neither.
+        // A neutral wash for in-app selection/highlight surfaces.
         try { p.highlightBackgroundColor = Theme.rgba(primaryText, 0.12) } catch (e) { }
         try { p.errorColor = wrong } catch (e) { }
-        try { p.highlightDimmerColor = ambient ? Theme.highlightDimmerColor : backgroundLow } catch (e) { }
+        try { p.highlightDimmerColor = ambient ? Theme.highlightDimmerColor  : backgroundLow } catch (e) { }
         try { p.overlayBackgroundColor = ambient ? Theme.overlayBackgroundColor : backgroundHigh } catch (e) { }
     }
 

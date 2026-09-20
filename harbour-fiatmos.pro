@@ -45,6 +45,15 @@ DISTFILES += \
     qml/components/SectionLabel.qml \
     qml/components/ValueRow.qml \
     qml/cover/CoverPage.qml \
+    qml/images/family/harbour-fiatagenda.png \
+    qml/images/family/harbour-fiatmargo.png \
+    qml/images/family/harbour-fiatglossa.png \
+    qml/images/family/harbour-fiatvox.png \
+    qml/images/family/harbour-fiatpons.png \
+    qml/images/family/harbour-fiatlux.png \
+    qml/images/family/harbour-fiatcor.png \
+    qml/images/family/harbour-fiatpassus.png \
+    qml/images/family/harbour-fiatmos.png \
     qml/pages/HabitListPage.qml \
     qml/pages/AddHabitPage.qml \
     qml/pages/LogPage.qml \
@@ -62,9 +71,4 @@ SAILFISHAPP_ICONS = 86x86 108x108 128x128 172x172
 
 # Translations are not wired up yet; add them here when they are.
 # CONFIG += sailfishapp
-
-# Set by the rpm spec (%qmake5 "VERSION=%{version}"). The fallback is only for
-# building straight out of Qt Creator, where rpm is not involved.
-isEmpty(VERSION): VERSION = 0.0.0-dev
-DEFINES += APP_VERSION=\\\"$$VERSION\\\"_i18n
 # TRANSLATIONS += translations/harbour-fiatmos-sv.ts
