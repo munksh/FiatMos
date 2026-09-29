@@ -278,37 +278,51 @@ Page {
                         }
                     }
 
-                    // -- Day grid -------------------------------------------
+                    // -- Calendar -------------------------------------------
                     //
-                    // One square per day, oldest top-left, today last. Same
-                    // direction as the chart's axis below -- the two must never
-                    // disagree about which way time runs, and left-to-right is
-                    // what a time axis means. The empty squares at the start
-                    // are the days you did not log, not a rendering fault.
+                    // The days as month calendars, Monday first, so a
+                    // weekday habit shows its weekdays and a Sunday habit its
+                    // Sundays. Shaded by how much, like the old grid was.
 
-                    SectionLabel { text: qsTr("Days") }
+                    SectionLabel { text: qsTr("Calendar") }
 
-                    Grid {
+                    Almanac {
                         width: parent.width
-                        columns: 14
-                        spacing: Theme.paddingSmall
+                        days: page.days
+                        maxValue: Math.max(1, page.chartMax)
+                    }
 
-                        Repeater {
-                            model: page.days.length
-
-                            Rectangle {
-                                property var point: page.days[index]
-
-                                width: (parent.width - parent.spacing * (parent.columns - 1)) / parent.columns
-                                height: width
-                                radius: width * 0.25
-                                color: point.value === null ? "transparent" : FiatMosTheme.accent
-                                opacity: point.value === null
-                                    ? 1.0
-                                    : Math.max(0.35, Math.min(1.0, point.value / Math.max(1, page.chartMax)))
-                                border.width: point.value === null ? 1 : 0
-                                border.color: FiatMosTheme.dotIdle
+                    // Two facts the calendar shows but does not say. The
+                    // longest run is days in a row, which only means
+                    // something for a daily habit; the best month is by
+                    // amount for a number, and by days for anything else.
+                    Label {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        font.pixelSize: Theme.fontSizeExtraSmall
+                        color: FiatMosTheme.secondaryText
+                        visible: text !== ""
+                        text: {
+                            var _g = page.gen
+                            if (page.habit === null) return ""
+                            var byAmount = page.habit.valueType === "numeric" || page.habit.valueType === "reference"
+                            var f = Storage.calendarFacts(page.days, !byAmount)
+                            if (f.bestMonth === "") return ""
+                            var parts = []
+                            if (page.habit.frequency === "daily" && f.longestRun > 1)
+                                parts.push(qsTr("Longest run: %1 days in a row").arg(f.longestRun))
+                            if (page.lookback > 30) {
+                                var month = Qt.locale().monthName(parseInt(f.bestMonth.substr(5, 2), 10) - 1, Locale.LongFormat)
+                                if (byAmount) {
+                                    var u = Storage.unitForHabit(page.habit)
+                                    parts.push(qsTr("Best month: %1, with %2").arg(month).arg(u === "" ? f.bestMonthValue : f.bestMonthValue + " " + u))
+                                } else {
+                                    parts.push(f.bestMonthValue === 1
+                                        ? qsTr("Best month: %1, 1 day").arg(month)
+                                        : qsTr("Best month: %1, %2 days").arg(month).arg(f.bestMonthValue))
+                                }
                             }
+                            return parts.length === 0 ? "" : parts.join(". ") + "."
                         }
                     }
 

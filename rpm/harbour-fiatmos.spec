@@ -1,6 +1,6 @@
 Name:       harbour-fiatmos
 Summary:    Habit tracker where each habit sets its own detail
-Version:    1.1
+Version:    1.2
 Release:    1
 License:    MIT
 URL:        https://github.com/munksh/FiatMos
@@ -10,6 +10,7 @@ BuildRequires:  pkgconfig(sailfishapp) >= 1.0.2
 BuildRequires:  pkgconfig(Qt5Core)
 BuildRequires:  pkgconfig(Qt5Qml)
 BuildRequires:  pkgconfig(Qt5Quick)
+BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  desktop-file-utils
 
 # Note: QtQuick.LocalStorage and Nemo.Configuration both ship with the OS.
@@ -41,10 +42,14 @@ A rating on a scale you invent. Sleep from 0 to 3, mood from 0 to 7.
 Something you work through. Books, repertoire, rolls of film, study texts.
 You keep a small library of them, and each kind of thing carries its own
 unit - so pages and minutes can never be added together into one meaningless
-number.
+number. Each kind gets its own shelf, calendar and statistics, and each item
+shows how far in you are.
 
 A whole session. Exercises, sets, reps and weights, for training and rehab.
 One session per day, saved as you go.
+
+Missed something before midnight? Yesterday stays open. The next morning
+the list shows what was left, one tap from done.
 
 The analysis does not care which you picked. Streaks, totals, averages,
 medians and history are worked out from your entries every time they are
@@ -56,14 +61,20 @@ than removing one, and habits are archived instead of erased.
 
 WHAT IT DOES WITH YOUR DATA
 
-Nothing at all. There is no account, no telemetry, and no network access -
-the app cannot reach the internet, so there is nowhere for anything to go.
-Everything lives in one file on your phone.
+Nothing at all. There is no account and no telemetry. Everything lives in
+one file on your phone.
 
-Fiat Mos asks for exactly one permission, the Documents folder, and only so
-that Backup can write an export you can carry to a new phone. That export is
-plain readable JSON. Your history stays yours and stays readable even if this
-app stops existing.
+Fiat Mos asks for two permissions. Documents, so that Backup can write an
+export you can carry to a new phone. That export is plain readable JSON:
+your history stays yours and stays readable even if this app stops existing.
+
+And Internet, for one button. When you add a book you can look it up by its
+ISBN: the ISBN goes to the services you have switched on - Open Library,
+Libris at the Swedish national library, the German and French national
+libraries and, only if you allow it, Google Books - and the title, author,
+length and cover come back. Each of them also sees your phone's IP address.
+Nothing else is ever sent, nothing is sent until you press Look up, and a
+service you have not switched on is never contacted.
 
 THE NAME
 

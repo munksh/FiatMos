@@ -1,1 +1,2 @@
 singleton FiatMosTheme 1.0 FiatMosTheme.qml
+singleton LookupSettings 1.0 LookupSettings.qml

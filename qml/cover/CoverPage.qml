@@ -8,10 +8,12 @@ CoverBackground {
 
     property int unlogged: 0
     property int total: 0
+    property string shownDay: ""
 
     function refresh() {
         unlogged = Storage.unloggedTodayCount()
         total = Storage.activeHabitCount()
+        shownDay = Storage.dayKey(new Date())
     }
 
     Component.onCompleted: refresh()
@@ -22,6 +24,18 @@ CoverBackground {
     Connections {
         target: Qt.application
         onStateChanged: cover.refresh()
+    }
+
+    // The count is about today, and today ends at midnight whether or not the
+    // app is opened. While it sits in the background the clock is checked
+    // once a minute, and the count redone only when the date has changed.
+    Timer {
+        interval: 60000
+        repeat: true
+        running: Qt.application.state !== Qt.ApplicationActive
+        onTriggered: {
+            if (Storage.dayKey(new Date()) !== cover.shownDay) cover.refresh()
+        }
     }
 
     Rectangle {

@@ -1,6 +1,7 @@
 #include <QtQuick>
 #include <sailfishapp.h>
 
+#include "coverstore.h"
 #include "fileio.h"
 
 int main(int argc, char *argv[])
@@ -11,6 +12,7 @@ int main(int argc, char *argv[])
     QScopedPointer<QGuiApplication> app(SailfishApp::application(argc, argv));
 
     qmlRegisterType<FileIO>("se.munkstolen.fiatmos", 1, 0, "FileIO");
+    qmlRegisterType<CoverStore>("se.munkstolen.fiatmos", 1, 0, "CoverStore");
 
     QScopedPointer<QQuickView> view(SailfishApp::createView());
 

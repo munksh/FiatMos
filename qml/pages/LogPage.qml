@@ -6,6 +6,10 @@ import "../Storage.js" as Storage
 
 // Handles check, number, rating and reference habits. Structured habits get
 // their own page (SessionPage) -- HabitListPage routes them there directly.
+//
+// The page works on one day: today, or yesterday for whatever did not get
+// logged before midnight. Yesterday is as far back as it goes, on purpose --
+// a page that could log any date would be a page for rewriting history.
 
 Page {
     id: page
@@ -16,7 +20,8 @@ Page {
     property int scaleValue: -1
     property int bookId: -1
     property var readingItems: []
-    property string today: ""
+    property int dayOffset: 0                // 0 today, -1 yesterday
+    property string day: ""                  // the day key dayOffset points at
 
     // Pills stay readable up to about a dozen steps. Above that a slider is
     // the right control -- a Flow of 40 pills is not a scale, it's a wall.
@@ -27,8 +32,8 @@ Page {
 
     function refresh() {
         habit = Storage.getHabit(habitId)
-        today = Storage.dayKey(new Date())
-        Storage.loadEntriesForDay(entryModel, habitId, today)
+        day = Storage.dayOffsetKey(dayOffset)
+        Storage.loadEntriesForDay(entryModel, habitId, day)
         if (habit !== null && habit.valueType === "reference") {
             // Only this habit's kind. Logging a roll of film under Reading
             // is not something you have to remember not to do.
@@ -56,9 +61,9 @@ Page {
                 var a = parseFloat(numberField.text.replace(",", "."))
                 if (!isNaN(a)) amount = a
             }
-            Storage.addReferenceEntry(habit, bookId, amount, note)
+            Storage.addReferenceEntry(habit, bookId, amount, note, page.day)
         } else {
-            var values = { note: note }
+            var values = { note: note, loggedAt: Storage.loggedAtFor(page.day) }
             if (habit.valueType === "numeric") {
                 var parsed = parseFloat(numberField.text.replace(",", "."))
                 if (isNaN(parsed)) return
@@ -76,7 +81,27 @@ Page {
         refresh()
     }
 
+    // "Sunday 27 September", in the phone's own language.
+    function dayName(key) {
+        if (key === "") return ""
+        return Qt.formatDate(Storage.dateFromDayKey(key), "dddd d MMMM")
+    }
+
+    function weekday(key) {
+        if (key === "") return ""
+        return Qt.formatDate(Storage.dateFromDayKey(key), "dddd")
+    }
+
+    onDayOffsetChanged: refresh()
     Component.onCompleted: refresh()
+
+    // Left open across midnight, "today" has to move with the clock.
+    Connections {
+        target: Qt.application
+        onStateChanged: {
+            if (Qt.application.state === Qt.ApplicationActive) page.refresh()
+        }
+    }
 
     // Fiat colours paint their own paper. Under an ambience there is no
     // background at all -- the wallpaper is the background.
@@ -140,6 +165,28 @@ Page {
                 }
             }
 
+            // -- Which day -----------------------------------------------------
+
+            Flow {
+                x: Theme.horizontalPageMargin
+                width: parent.width - Theme.horizontalPageMargin * 2
+                spacing: Theme.paddingSmall
+
+                Pill {
+                    text: qsTr("today")
+                    selected: page.dayOffset === 0
+                    onClicked: page.dayOffset = 0
+                }
+                Pill {
+                    text: {
+                        var _g = page.gen
+                        return qsTr("yesterday · %1").arg(Qt.formatDate(Storage.dateFromDayKey(Storage.dayOffsetKey(-1)), "ddd d"))
+                    }
+                    selected: page.dayOffset === -1
+                    onClicked: page.dayOffset = -1
+                }
+            }
+
             // -- Check --------------------------------------------------------
 
             Label {
@@ -152,7 +199,11 @@ Page {
                 wrapMode: Text.WordWrap
                 color: FiatMosTheme.secondaryText
                 font.pixelSize: Theme.fontSizeSmall
-                text: entryModel.count > 0 ? qsTr("Logged today.") : qsTr("Not logged today.")
+                text: {
+                    var _g = page.gen
+                    if (page.dayOffset === 0) return entryModel.count > 0 ? qsTr("Logged today.") : qsTr("Not logged today.")
+                    return entryModel.count > 0 ? qsTr("Logged yesterday.") : qsTr("Not logged yesterday.")
+                }
             }
 
             // -- Reference: which book ----------------------------------------
@@ -301,12 +352,28 @@ Page {
                 EnterKey.onClicked: focus = false
             }
 
-            // -- Today's entries -----------------------------------------------
+            // -- The day's entries ---------------------------------------------
 
             SectionLabel {
                 x: Theme.horizontalPageMargin
                 visible: entryModel.count > 0
-                text: qsTr("Today")
+                text: {
+                    var _g = page.gen
+                    return page.dayOffset === 0 ? qsTr("Today") : page.dayName(page.day)
+                }
+            }
+
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - Theme.horizontalPageMargin * 2
+                visible: page.dayOffset !== 0 && entryModel.count === 0
+                wrapMode: Text.WordWrap
+                font.pixelSize: Theme.fontSizeExtraSmall
+                color: FiatMosTheme.secondaryText
+                text: {
+                    var _g = page.gen
+                    return qsTr("Nothing logged on %1.").arg(page.dayName(page.day))
+                }
             }
 
             Repeater {
@@ -337,8 +404,10 @@ Page {
                         width: parent.width - Theme.horizontalPageMargin * 2
                         spacing: Theme.paddingMedium
 
+                        // A late entry's clock time is a stand-in, so it
+                        // says when it was written instead.
                         Label {
-                            text: model.timeLabel
+                            text: model.late ? qsTr("later") : model.timeLabel
                             color: FiatMosTheme.secondaryText
                             font.pixelSize: Theme.fontSizeSmall
                             width: Theme.itemSizeSmall
@@ -397,6 +466,11 @@ Page {
             text: {
                 var _g = page.gen
                 if (page.habit === null) return qsTr("Log")
+                if (page.dayOffset !== 0) {
+                    return (page.habit.valueType === "boolean" && entryModel.count > 0)
+                        ? qsTr("Log %1 again").arg(page.weekday(page.day))
+                        : qsTr("Log for %1").arg(page.weekday(page.day))
+                }
                 if (page.habit.valueType === "boolean" && entryModel.count > 0) return qsTr("Log again")
                 return qsTr("Log")
             }

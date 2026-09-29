@@ -163,6 +163,24 @@ QtObject {
     // disappears on black; a lighter one does the reverse. This is the middle.
     readonly property color makerMark: "#7E7566"
 
+    // ---- book cloth ----
+    //
+    // The spines on the shelf, and the plain cover a book gets when there is
+    // no picture of it. Fixed, like the maker's mark and like a real cover
+    // photo: a book on a shelf is an object, not part of the interface, and
+    // it does not change colour with the wallpaper. None of them is the
+    // accent, which on the shelf means "on the go".
+    readonly property var cloth: ["#5C4B3B", "#2F3A36", "#6D5C47", "#3A342B", "#4B4A43", "#4A3F35", "#6E5B45"]
+    readonly property color clothText: "#F2EFE8"
+
+    // The same book always gets the same cloth.
+    function clothFor(title) {
+        var s = String(title === undefined || title === null ? "" : title)
+        var h = 0
+        for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 100003
+        return cloth[h % cloth.length]
+    }
+
     // The wash under a pressed row or menu item. Silica would use the
     // ambience highlight here, which bleeds through Fiat colours; this keeps
     // the press in the app's own accent.

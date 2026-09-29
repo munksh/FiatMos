@@ -21,16 +21,67 @@ Page {
     }
     readonly property bool grouped: groupConfig.value === true
 
+    // The morning the leftovers were folded away, as a day key. Folding them
+    // lasts for that morning only; the next day they are open again.
+    ConfigurationValue {
+        id: leftoversFoldedConfig
+        key: "/apps/harbour-fiatmos/leftoversFoldedOn"
+        defaultValue: ""
+    }
+
+    // What the list was built for. Compared with the clock to notice that
+    // midnight, or noon, has passed while the app stayed open.
+    property string shownDay: ""
+    property bool morning: false
+
+    readonly property bool showLeftovers: page.morning && leftoverModel.count > 0
+    readonly property bool leftoversFolded: leftoversFoldedConfig.value === page.shownDay
+
     function reload() {
         Storage.loadHabits(habitModel, page.grouped)
+        Storage.loadLeftovers(leftoverModel)
         today = Storage.dayCompletion()
+        shownDay = Storage.dayKey(new Date())
+        morning = new Date().getHours() < 12
         localGen++
+    }
+
+    function yesterdayName() {
+        return Qt.formatDate(Storage.dateFromDayKey(Storage.dayOffsetKey(-1)), "dddd")
+    }
+
+    function openFor(habitId, valueType, dayOffset) {
+        pageStack.animatorPush(
+            valueType === "structured" ? Qt.resolvedUrl("SessionPage.qml") : Qt.resolvedUrl("LogPage.qml"),
+            { habitId: habitId, dayOffset: dayOffset })
     }
 
     onGroupedChanged: reload()
 
     onStatusChanged: {
         if (status === PageStatus.Active) reload()
+    }
+
+    // Coming back to the app is the usual way a new day arrives: it was left
+    // open last night and brought forward this morning. Nothing else would
+    // tell the list, so it asks the clock whenever it is shown again.
+    Connections {
+        target: Qt.application
+        onStateChanged: {
+            if (Qt.application.state === Qt.ApplicationActive && page.status === PageStatus.Active) page.reload()
+        }
+    }
+
+    // And for the rarer case of watching the clock pass midnight, or noon,
+    // with the app open.
+    Timer {
+        interval: 30000
+        repeat: true
+        running: Qt.application.state === Qt.ApplicationActive && page.status === PageStatus.Active
+        onTriggered: {
+            var now = new Date()
+            if (Storage.dayKey(now) !== page.shownDay || (now.getHours() < 12) !== page.morning) page.reload()
+        }
     }
 
     function sectionTitle(s) {
@@ -52,6 +103,7 @@ Page {
     }
 
     ListModel { id: habitModel }
+    ListModel { id: leftoverModel }
 
     SilicaListView {
         id: listView
@@ -150,6 +202,151 @@ Page {
                         }
                     }
                 }
+            }
+
+            // -- Left from yesterday -------------------------------------------
+            //
+            // Mornings only. The daily habits that yesterday did not finish,
+            // each one tap from being logged for yesterday. Fold it away and
+            // it stays folded until tomorrow morning.
+
+            Rectangle {
+                x: Theme.horizontalPageMargin - Theme.paddingMedium
+                width: parent.width - x * 2
+                height: leftoverColumn.height
+                visible: page.showLeftovers
+                radius: Theme.paddingLarge
+                color: FiatMosTheme.recessFill
+                border.width: 1
+                border.color: FiatMosTheme.recessBorder
+
+                Column {
+                    id: leftoverColumn
+                    width: parent.width
+
+                    BackgroundItem {
+                        width: parent.width
+                        height: Theme.itemSizeExtraSmall
+                        highlightedColor: FiatMosTheme.highlightWash
+                        onClicked: leftoversFoldedConfig.value = page.leftoversFolded ? "" : page.shownDay
+
+                        Label {
+                            anchors.left: parent.left
+                            anchors.leftMargin: Theme.paddingMedium
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: qsTr("Left from yesterday")
+                            font.pixelSize: Theme.fontSizeExtraSmall
+                            color: FiatMosTheme.secondaryText
+                        }
+
+                        Label {
+                            anchors.right: parent.right
+                            anchors.rightMargin: Theme.paddingMedium
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: page.leftoversFolded ? qsTr("Show %1").arg(leftoverModel.count) : qsTr("Hide")
+                            font.pixelSize: Theme.fontSizeExtraSmall
+                            color: FiatMosTheme.accent
+                        }
+                    }
+
+                    Repeater {
+                        model: page.leftoversFolded ? 0 : leftoverModel
+
+                        BackgroundItem {
+                            id: leftoverRow
+                            width: leftoverColumn.width
+                            height: Theme.itemSizeSmall
+                            highlightedColor: FiatMosTheme.highlightWash
+                            onClicked: page.openFor(model.habitId, model.valueType, -1)
+
+                            Row {
+                                anchors.verticalCenter: parent.verticalCenter
+                                x: Theme.paddingMedium
+                                width: parent.width - Theme.paddingMedium * 2
+                                spacing: Theme.paddingMedium
+
+                                Item {
+                                    id: leftoverMark
+                                    width: Theme.itemSizeSmall * 0.6
+                                    height: width
+                                    anchors.verticalCenter: parent.verticalCenter
+
+                                    ProgressRing {
+                                        anchors.fill: parent
+                                        visible: model.counted
+                                        animated: false
+                                        value: model.fraction
+                                        lineWidth: Math.max(2, width * 0.16)
+                                    }
+
+                                    Rectangle {
+                                        anchors.fill: parent
+                                        visible: !model.counted
+                                        radius: width / 2
+                                        color: "transparent"
+                                        border.width: 1
+                                        border.color: FiatMosTheme.pillBorder
+                                    }
+
+                                    // The same shortcut as the list below: a
+                                    // plain tick is logged straight away, for
+                                    // yesterday.
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        onClicked: {
+                                            if (model.valueType === "boolean" && !model.counted) {
+                                                Storage.addEntry(Storage.getHabit(model.habitId),
+                                                                 { loggedAt: Storage.loggedAtFor(Storage.dayOffsetKey(-1)) })
+                                                page.reload()
+                                            } else {
+                                                page.openFor(model.habitId, model.valueType, -1)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Column {
+                                    width: parent.width - leftoverMark.width - parent.spacing
+                                    anchors.verticalCenter: parent.verticalCenter
+
+                                    Label {
+                                        width: parent.width
+                                        truncationMode: TruncationMode.Fade
+                                        text: model.name
+                                        font.pixelSize: Theme.fontSizeSmall
+                                        color: leftoverRow.highlighted ? FiatMosTheme.accent : FiatMosTheme.primaryText
+                                    }
+
+                                    Label {
+                                        width: parent.width
+                                        truncationMode: TruncationMode.Fade
+                                        font.pixelSize: Theme.fontSizeExtraSmall
+                                        color: FiatMosTheme.secondaryText
+                                        text: {
+                                            var _g = page.localGen
+                                            var day = page.yesterdayName()
+                                            if (model.counted) {
+                                                return model.unit === ""
+                                                    ? qsTr("%1 of %2 on %3").arg(model.done).arg(model.target).arg(day)
+                                                    : qsTr("%1 of %2 %3 on %4").arg(model.done).arg(model.target).arg(model.unit).arg(day)
+                                            }
+                                            if (model.valueType === "boolean") return qsTr("Tap the circle to log it for %1").arg(day)
+                                            return qsTr("Not logged on %1").arg(day)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Item { width: 1; height: Theme.paddingSmall }
+                }
+            }
+
+            Item {
+                width: 1
+                height: Theme.paddingLarge
+                visible: page.showLeftovers
             }
 
             // Grouping is off by default and stays where you left it.

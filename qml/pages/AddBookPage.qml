@@ -1,8 +1,10 @@
 import QtQuick 2.0
 import Sailfish.Silica 1.0
+import se.munkstolen.fiatmos 1.0
 import ".."
 import "../components"
 import "../Storage.js" as Storage
+import "../Lookup.js" as Lookup
 
 // Adds and edits a library item. The file is still called AddBookPage so the
 // .pro does not churn; nothing in it says "book" any more.
@@ -10,6 +12,13 @@ import "../Storage.js" as Storage
 // The kind is chosen on its own page, the same one the habit editor uses. It
 // is never a fixed list -- a new kind of thing must never need a schema
 // migration -- but it is not a wall of pills either.
+//
+// A book can be looked up by its ISBN. That is the only thing in the app that
+// goes online, it only happens when Look up is pressed, only the ISBN is sent,
+// and only to the services the user has switched on (LookupServicesPage,
+// Lookup.js). The first time, that list is shown before anything is sent. What
+// comes back fills the fields and nothing more; nothing is saved until the
+// dialog is accepted.
 
 Dialog {
     id: page
@@ -25,7 +34,16 @@ Dialog {
     property string kindName: ""
     property string kindUnitText: ""
 
-    canAccept: titleField.text.trim().length > 0 && page.kindId >= 0
+    // "" | "busy" | "found" | "notfound" | "offline" | "invalid" | "none"
+    property string lookupState: ""
+    // Look up was pressed before the list of services had been confirmed; when
+    // it is, carry on. Cleared if the list is dismissed instead.
+    property bool lookupAfterChoice: false
+
+    readonly property string isbn: Lookup.normaliseIsbn(isbnField.text)
+    readonly property bool isbnOk: isbnField.text.trim() === "" || page.isbn !== ""
+
+    canAccept: titleField.text.trim().length > 0 && page.kindId >= 0 && page.isbnOk
     acceptDestinationAction: PageStackAction.Pop
 
     function addTag(t) {
@@ -59,6 +77,64 @@ Dialog {
         }
     }
 
+    function openServices(first) {
+        pageStack.animatorPush(Qt.resolvedUrl("LookupServicesPage.qml"), { firstTime: first })
+    }
+
+    // The services do the asking, one after another, in LookupRunner. This
+    // only decides whether it may start at all.
+    function lookUp() {
+        if (page.isbn === "") {
+            page.lookupState = "invalid"
+            return
+        }
+        // Nothing is sent until the person has seen what each service gets.
+        if (!LookupSettings.chosen) {
+            page.lookupAfterChoice = true
+            page.openServices(true)
+            return
+        }
+        if (LookupSettings.enabledIds().length === 0) {
+            page.lookupState = "none"
+            return
+        }
+        isbnField.focus = false
+        page.lookupState = "busy"
+        runner.lookUp(page.isbn, !preview.hasPicture)
+    }
+
+    function showResult() {
+        var r = runner.result
+        if (r.title === "") {
+            page.lookupState = runner.offline ? "offline" : "notfound"
+            return
+        }
+        titleField.text = r.title
+        if (r.creator !== "") creatorField.text = r.creator
+        if (r.extent > 0) extentField.text = String(r.extent)
+        page.lookupState = "found"
+    }
+
+    LookupRunner {
+        id: runner
+        onInfoDone: page.showResult()
+    }
+
+    Connections {
+        target: LookupSettings
+        onChosenChanged: {
+            if (page.lookupAfterChoice && LookupSettings.chosen) {
+                page.lookupAfterChoice = false
+                page.lookUp()
+            }
+        }
+    }
+
+    // Coming back from the list without having confirmed it: do not look up.
+    onStatusChanged: {
+        if (status === PageStatus.Active) page.lookupAfterChoice = false
+    }
+
     Component.onCompleted: {
         knownTags = Storage.allTags()
 
@@ -68,14 +144,14 @@ Dialog {
         if (mine.length > 0 && page.kindId < 0) page.kindId = mine[0].id
 
         if (editing) {
-            var list = Storage.items({ includePrivate: true })
-            var it = null
-            for (var i = 0; i < list.length; i++) if (list[i].id === itemId) it = list[i]
+            var it = Storage.itemById(itemId)
             if (it !== null) {
                 titleField.text = it.title
                 creatorField.text = it.creator
                 page.kindId = it.kindId
                 page.isPrivate = it.private
+                isbnField.text = it.isbn
+                extentField.text = it.extent > 0 ? String(it.extent) : ""
                 tagsField.text = Storage.itemTags(itemId).join(", ")
             }
         }
@@ -92,6 +168,8 @@ Dialog {
             creator: creatorField.text.trim(),
             kindId: page.kindId,
             private: page.isPrivate,
+            extent: extentField.text.trim().replace(",", "."),
+            isbn: page.isbn,
             tags: Storage.parseTags(tagsField.text)
         }
         if (editing) Storage.updateItem(payload)
@@ -123,6 +201,112 @@ Dialog {
                 acceptEnabled: page.canAccept
                 onCancelled: page.reject()
                 onAccepted: page.accept()
+            }
+
+            // -- ISBN ------------------------------------------------------------
+
+            Item {
+                width: parent.width
+                height: isbnField.height
+
+                TextField {
+                    id: isbnField
+                    width: parent.width - lookupPill.width - Theme.horizontalPageMargin
+                    label: qsTr("ISBN (optional, books only)")
+                    placeholderText: qsTr("ISBN, to look the book up")
+                    inputMethodHints: Qt.ImhPreferNumbers | Qt.ImhNoPredictiveText
+                    color: FiatMosTheme.primaryText
+                    onTextChanged: {
+                        // Another ISBN: what is still coming back is about the old one.
+                        if (runner.phase === "busy" || runner.coverBusy) {
+                            runner.cancel()
+                            page.lookupState = ""
+                        }
+                        if (page.lookupState === "invalid" || page.lookupState === "notfound"
+                                || page.lookupState === "none") page.lookupState = ""
+                    }
+                    EnterKey.iconSource: "image://theme/icon-m-search"
+                    EnterKey.onClicked: page.lookUp()
+                }
+
+                Pill {
+                    id: lookupPill
+                    anchors.right: parent.right
+                    anchors.rightMargin: Theme.horizontalPageMargin
+                    anchors.top: parent.top
+                    anchors.topMargin: Theme.paddingMedium
+                    text: page.lookupState === "busy" ? qsTr("Looking…") : qsTr("Look up")
+                    selected: page.isbn !== ""
+                    onClicked: if (page.lookupState !== "busy") page.lookUp()
+                }
+            }
+
+            Row {
+                x: Theme.horizontalPageMargin
+                width: parent.width - Theme.horizontalPageMargin * 2
+                spacing: Theme.paddingLarge
+                visible: lookupNote.text !== "" || preview.hasPicture
+
+                BookCover {
+                    id: preview
+                    width: Theme.itemSizeLarge
+                    height: width * 1.5
+                    visible: hasPicture
+                    isbn: page.isbn
+                    title: titleField.text
+                    revision: runner.coverRevision
+                }
+
+                Label {
+                    id: lookupNote
+                    width: parent.width - (preview.visible ? preview.width + parent.spacing : 0)
+                    anchors.verticalCenter: parent.verticalCenter
+                    wrapMode: Text.WordWrap
+                    font.pixelSize: Theme.fontSizeExtraSmall
+                    color: (page.lookupState === "invalid" || (!page.isbnOk && isbnField.text.trim().length >= 10))
+                           ? FiatMosTheme.wrong : FiatMosTheme.secondaryText
+                    text: {
+                        var _g = runner.gen
+                        var lines = []
+                        if (page.lookupState === "busy") {
+                            return runner.busyText !== "" ? runner.busyText : qsTr("Looking up…")
+                        }
+                        if (page.lookupState === "found") {
+                            lines.push(runner.foundText)
+                            if (runner.askedText !== "") lines.push(runner.askedText)
+                            if (runner.coverBusy) lines.push(qsTr("Fetching the cover…"))
+                            lines.push(qsTr("Check the fields below before you save."))
+                            return lines.join("\n")
+                        }
+                        if (page.lookupState === "notfound") {
+                            lines.push(qsTr("None of the services asked knows this ISBN. Fill in the fields yourself."))
+                            if (runner.askedText !== "") lines.push(runner.askedText)
+                            return lines.join("\n")
+                        }
+                        if (page.lookupState === "offline") {
+                            lines.push(qsTr("No answer. Is the phone online?"))
+                            if (runner.askedText !== "") lines.push(runner.askedText)
+                            return lines.join("\n")
+                        }
+                        if (page.lookupState === "none")
+                            return qsTr("All lookup services are switched off. Choose where to look, below.")
+                        if (page.lookupState === "invalid" || (!page.isbnOk && isbnField.text.trim().length >= 10))
+                            return qsTr("That is not a valid ISBN. Check the digits.")
+                        return ""
+                    }
+                }
+            }
+
+            Flow {
+                x: Theme.horizontalPageMargin
+                width: parent.width - Theme.horizontalPageMargin * 2
+
+                Pill {
+                    text: LookupSettings.chosen
+                        ? qsTr("Lookup services \u00B7 %1 on").arg(LookupSettings.enabledCount)
+                        : qsTr("Choose lookup services")
+                    onClicked: page.openServices(false)
+                }
             }
 
             TextField {
@@ -160,13 +344,28 @@ Dialog {
                 onClicked: page.pickKind()
             }
 
+            TextField {
+                id: extentField
+                width: parent.width
+                label: page.kindUnitText === ""
+                    ? qsTr("Length (optional)")
+                    : qsTr("Length in %1 (optional)").arg(page.kindUnitText)
+                placeholderText: page.kindUnitText === ""
+                    ? qsTr("Length")
+                    : qsTr("How many %1 in all").arg(page.kindUnitText)
+                inputMethodHints: Qt.ImhFormattedNumbersOnly
+                color: FiatMosTheme.primaryText
+                EnterKey.iconSource: "image://theme/icon-m-enter-close"
+                EnterKey.onClicked: focus = false
+            }
+
             Label {
                 x: Theme.horizontalPageMargin
                 width: parent.width - Theme.horizontalPageMargin * 2
                 wrapMode: Text.WordWrap
                 font.pixelSize: Theme.fontSizeExtraSmall
                 color: FiatMosTheme.secondaryText
-                text: qsTr("The kind decides what a log entry counts. You never set a unit on the item itself.")
+                text: qsTr("The kind decides what a log entry counts. You never set a unit on the item itself. The length is optional: with it, the item shows how far in you are.")
             }
 
             // -- Tags ----------------------------------------------------------

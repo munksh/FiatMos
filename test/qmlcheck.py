@@ -47,7 +47,8 @@ listed = set(re.findall(r'(qml/[\w/.-]+|rpm/[\w/.-]+)', pro))
 for f in listed:
     if not os.path.exists(os.path.join(ROOT, f)):
         bad(f"DISTFILES lists {f} but it does not exist")
-for path in files + [os.path.join(ROOT, 'qml', 'Storage.js'), os.path.join(ROOT, 'qml', 'qmldir')]:
+scripts = sorted(glob.glob(os.path.join(ROOT, 'qml', '**', '*.js'), recursive=True))
+for path in files + scripts + [os.path.join(ROOT, 'qml', 'qmldir')]:
     rel = os.path.relpath(path, ROOT)
     if rel not in listed:
         bad(f"{rel} exists but is not in DISTFILES -- it will not deploy")

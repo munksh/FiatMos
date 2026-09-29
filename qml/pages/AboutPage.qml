@@ -137,7 +137,19 @@ Page {
                 wrapMode: Text.WordWrap
                 font.pixelSize: Theme.fontSizeExtraSmall
                 color: FiatMosTheme.secondaryText
-                text: qsTr("Everything stays on this phone, in one file. There is no account, no network access, and nothing is measured or reported. Fiat Mos asks for one permission — the Documents folder — and only so that Backup can write an export you can carry to another phone.")
+                text: qsTr("Everything stays on this phone, in one file. There is no account, and nothing is measured or reported. Fiat Mos asks for two permissions. Documents, so that Backup can write an export you can carry to another phone. And Internet, for one button: Look up, when you add a book. It sends the book's ISBN, and nothing else, to the services you have switched on: Open Library, Libris, the German and French national libraries and, only if you allow it, Google Books. Each of them also sees your phone's IP address, as any website would. Nothing is sent until you press Look up, a service that is off is never contacted, and which ones are on is your choice.")
+            }
+
+            Flow {
+                x: Theme.horizontalPageMargin
+                width: parent.width - Theme.horizontalPageMargin * 2
+
+                Pill {
+                    text: LookupSettings.chosen
+                        ? qsTr("Lookup services \u00B7 %1 on").arg(LookupSettings.enabledCount)
+                        : qsTr("Choose lookup services")
+                    onClicked: pageStack.animatorPush(Qt.resolvedUrl("LookupServicesPage.qml"), { firstTime: !LookupSettings.chosen })
+                }
             }
 
             Label {

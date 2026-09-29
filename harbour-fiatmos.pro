@@ -17,6 +17,9 @@ TARGET = harbour-fiatmos
 
 CONFIG += sailfishapp
 
+# For CoverStore, which fetches a book's cover when you press Look up.
+QT += network
+
 # Set by the rpm spec (%qmake5 "VERSION=%{version}"). The fallback is only for
 # building straight out of Qt Creator, where rpm is not involved.
 isEmpty(VERSION): VERSION = 0.0.0-dev
@@ -24,9 +27,11 @@ DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 
 SOURCES += \
     src/harbour-fiatmos.cpp \
+    src/coverstore.cpp \
     src/fileio.cpp
 
 HEADERS += \
+    src/coverstore.h \
     src/fileio.h
 
 # Everything listed here gets deployed to /usr/share/harbour-fiatmos/.
@@ -34,26 +39,32 @@ HEADERS += \
 DISTFILES += \
     qml/harbour-fiatmos.qml \
     qml/Storage.js \
+    qml/Lookup.js \
+    qml/LookupSettings.qml \
     qml/FiatMosTheme.qml \
     qml/qmldir \
+    qml/components/Almanac.qml \
+    qml/components/BookCover.qml \
     qml/components/DialogHead.qml \
+    qml/components/LookupRunner.qml \
     qml/components/EmptyNote.qml \
     qml/components/MunkstolenMark.qml \
     qml/components/PageHead.qml \
     qml/components/Pill.qml \
     qml/components/ProgressRing.qml \
     qml/components/SectionLabel.qml \
+    qml/components/Shelf.qml \
     qml/components/ValueRow.qml \
     qml/cover/CoverPage.qml \
-    qml/images/family/harbour-fiatagenda.png \
-    qml/images/family/harbour-fiatmargo.png \
-    qml/images/family/harbour-fiatglossa.png \
-    qml/images/family/harbour-fiatvox.png \
-    qml/images/family/harbour-fiatpons.png \
-    qml/images/family/harbour-fiatlux.png \
-    qml/images/family/harbour-fiatcor.png \
-    qml/images/family/harbour-fiatpassus.png \
-    qml/images/family/harbour-fiatmos.png \
+    qml/pages/images/family/harbour-fiatagenda.png \
+    qml/pages/images/family/harbour-fiatmargo.png \
+    qml/pages/images/family/harbour-fiatglossa.png \
+    qml/pages/images/family/harbour-fiatvox.png \
+    qml/pages/images/family/harbour-fiatpons.png \
+    qml/pages/images/family/harbour-fiatlux.png \
+    qml/pages/images/family/harbour-fiatcor.png \
+    qml/pages/images/family/harbour-fiatpassus.png \
+    qml/pages/images/family/harbour-fiatmos.png \
     qml/pages/HabitListPage.qml \
     qml/pages/AddHabitPage.qml \
     qml/pages/LogPage.qml \
@@ -65,6 +76,9 @@ DISTFILES += \
     qml/pages/BackupPage.qml \
     qml/pages/AboutPage.qml \
     qml/pages/TagTotalsPage.qml \
+    qml/pages/KindStatsPage.qml \
+    qml/pages/LookupServicesPage.qml \
+    qml/pages/ItemPage.qml \
     rpm/harbour-fiatmos.spec
 
 SAILFISHAPP_ICONS = 86x86 108x108 128x128 172x172

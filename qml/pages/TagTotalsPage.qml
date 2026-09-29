@@ -149,8 +149,22 @@ Page {
                     height: rowColumn.height + Theme.paddingLarge * 2
                     radius: FiatMosTheme.cardRadius
                     color: FiatMosTheme.card
-                    border.color: FiatMosTheme.cardBorder
+                    border.color: cardPress.pressed ? FiatMosTheme.accent : FiatMosTheme.cardBorder
                     border.width: FiatMosTheme.cardBorderWidth
+
+                    // A card opens that kind's statistics. The period and
+                    // the private setting go along; "All time" has no
+                    // calendar to draw, so it opens on the last year.
+                    MouseArea {
+                        id: cardPress
+                        anchors.fill: parent
+                        enabled: model.kindId >= 0
+                        onClicked: pageStack.animatorPush(Qt.resolvedUrl("KindStatsPage.qml"), {
+                            kindId: model.kindId,
+                            lookback: page.lookback === 30 ? 30 : 365,
+                            includePrivate: page.includePrivate
+                        })
+                    }
 
                     Column {
                         id: rowColumn
@@ -214,7 +228,7 @@ Page {
                     ? (page.tag === ""
                         ? qsTr("Nothing logged against anything in your library in %1.").arg(page.periodName())
                         : qsTr("Nothing tagged %1 was logged in %2.").arg(page.tag).arg(page.periodName()))
-                    : qsTr("One card per kind, so a unit is never mixed with another. Tag things in the library to ask narrower questions here.")
+                    : qsTr("One card per kind, so a unit is never mixed with another. Tap a card for that kind's shelf, calendar and items. Tag things in the library to ask narrower questions here.")
             }
         }
 

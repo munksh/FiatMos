@@ -37,9 +37,16 @@ const LS = { LocalStorage: { openDatabaseSync: () => fakeDb } }
 
 const sandbox = { LS, console, Date, Math, parseInt, parseFloat, isNaN, JSON }
 vm.createContext(sandbox)
-vm.runInContext(src + '\n;globalThis.__S = { init, addHabit, getHabit, allHabits, archiveHabit, loadHabits, addEntry, voidEntry, entriesOnDay, entriesSince, loadEntriesForDay, streak, completionRate, series, deviationFromTarget, unloggedTodayCount, activeHabitCount, dayKey, weekKey, addDays, localIso, currentVersion, formatEntry, isDueToday, addReferenceEntry, itemTitleForEntry, routines, addRoutine, lastSession, saveSession, sessionSummary, loadSessionHistory, sessionForDay, todaysSession, updateHabit, todayProgress, dayCompletion, sectionRank, addItem, updateItem, items, itemsForHabit, loadItems, setItemState, itemTags, setItemTags, allTags, tagTotals, loadTagTotals, kindTotals, loadKindTotals, exportAll, importAll, describeImport, newUid, itemLogCount, isActiveState, normaliseTag, parseTags, kinds, kindById, addKind, kindUnit, kindLabel, starterKinds, STARTER_KINDS, unitForHabit, habitTotal }', sandbox)
+vm.runInContext(src + '\n;globalThis.__S = { init, addHabit, getHabit, allHabits, archiveHabit, loadHabits, addEntry, voidEntry, entriesOnDay, entriesSince, loadEntriesForDay, streak, completionRate, series, deviationFromTarget, unloggedTodayCount, activeHabitCount, dayKey, weekKey, addDays, localIso, currentVersion, formatEntry, isDueToday, addReferenceEntry, itemTitleForEntry, routines, addRoutine, lastSession, saveSession, sessionSummary, loadSessionHistory, sessionForDay, todaysSession, updateHabit, todayProgress, dayCompletion, sectionRank, addItem, updateItem, items, itemsForHabit, loadItems, setItemState, itemTags, setItemTags, allTags, tagTotals, loadTagTotals, kindTotals, loadKindTotals, exportAll, importAll, describeImport, newUid, itemLogCount, isActiveState, normaliseTag, parseTags, kinds, kindById, addKind, kindUnit, kindLabel, starterKinds, STARTER_KINDS, unitForHabit, habitTotal, dayOffsetKey, loggedAtFor, createdDay, progressOn, yesterdayLeftovers, loadLeftovers, itemById, itemTotal, medianOf, calendarFacts, weeklyBuckets, weekdayTotals, kindStats, itemStats, cleanExtent, rowToEntry }', sandbox)
 
-module.exports = { S: sandbox.__S, sqlite, mkModel: () => {
+// Lookup.js has no database; it gets a context of its own.
+const rawL = fs.readFileSync(require('path').join(__dirname, '..', 'qml', 'Lookup.js'), 'utf8')
+const srcL = rawL.split('\n').filter(l => !l.trim().startsWith('.pragma')).join('\n')
+const sandboxL = { JSON, parseInt, Number, String, isNaN, RegExp }
+vm.createContext(sandboxL)
+vm.runInContext(srcL + '\n;globalThis.__L = { SERVICES, serviceName, has, normaliseIsbn, withCheckDigit, toIsbn10, registrationGroup, libraryOrder, openLibraryUrl, openLibraryUrls, openLibraryCoverUrl, librisUrl, dnbUrls, bnfUrls, googleUrl, urlsFor, plan, parseOpenLibrary, parseLibris, librisName, librisTitle, marcRecords, marcFields, tidyMarc, pagesFrom, parseDnb, parseBnf, parseGoogle, parseFor, emptyResult, merge, complete, coverCandidates, outcomeOf, provenance }', sandboxL)
+
+module.exports = { S: sandbox.__S, L: sandboxL.__L, sqlite, mkModel: () => {
   const m = []
   m.clear = () => { m.length = 0 }
   m.append = o => m.push(o)

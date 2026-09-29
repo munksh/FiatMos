@@ -30,6 +30,14 @@ Page {
         Storage.loadItems(itemModel, filter())
     }
 
+    // Statistics are per kind. With a kind chosen, or only one kind in the
+    // library, there is no question which; otherwise Totals is the way in.
+    function statsKind() {
+        if (page.kindFilter >= 0) return page.kindFilter
+        if (page.kindList.length === 1) return page.kindList[0].id
+        return -1
+    }
+
     onStatusChanged: {
         if (status === PageStatus.Active) reload()
     }
@@ -148,6 +156,17 @@ Page {
                 onClicked: pageStack.animatorPush(Qt.resolvedUrl("TagTotalsPage.qml"))
             }
             MenuItem {
+                text: qsTr("Statistics")
+                color: FiatMosTheme.primaryText
+                visible: page.statsKind() >= 0
+                onClicked: pageStack.animatorPush(Qt.resolvedUrl("KindStatsPage.qml"), { kindId: page.statsKind() })
+            }
+            MenuItem {
+                text: qsTr("Lookup services")
+                color: FiatMosTheme.primaryText
+                onClicked: pageStack.animatorPush(Qt.resolvedUrl("LookupServicesPage.qml"), { firstTime: !LookupSettings.chosen })
+            }
+            MenuItem {
                 text: qsTr("Add item")
                 color: FiatMosTheme.primaryText
                 // Returning here fires PageStatus.Active, which reloads.
@@ -160,7 +179,8 @@ Page {
             id: itemRow
             highlightedColor: FiatMosTheme.highlightWash
             width: listView.width
-            contentHeight: Theme.itemSizeMedium
+            contentHeight: Math.max(Theme.itemSizeMedium, itemColumn.height + Theme.paddingMedium * 2,
+                                    rowCover.visible ? rowCover.height + Theme.paddingMedium * 2 : 0)
 
             menu: ContextMenu {
                 highlightColor: FiatMosTheme.accent
@@ -200,13 +220,27 @@ Page {
                 }
             }
 
-            onClicked: pageStack.animatorPush(Qt.resolvedUrl("AddBookPage.qml"),
-                                              { itemId: model.itemId })
+            onClicked: pageStack.animatorPush(Qt.resolvedUrl("ItemPage.qml"), { itemId: model.itemId })
+
+            // Only items with an ISBN get a cover slot. A roll of film or a
+            // piece of repertoire has no cover, and a row of plain cloth
+            // blocks beside them would only be noise.
+            BookCover {
+                id: rowCover
+                x: Theme.horizontalPageMargin
+                anchors.verticalCenter: parent.verticalCenter
+                width: Theme.itemSizeSmall * 0.8
+                height: width * 1.5
+                visible: model.isbn !== undefined && model.isbn !== ""
+                isbn: model.isbn === undefined ? "" : model.isbn
+                title: model.title === undefined ? "" : model.title
+            }
 
             Column {
+                id: itemColumn
                 anchors.verticalCenter: parent.verticalCenter
-                x: Theme.horizontalPageMargin
-                width: parent.width - Theme.horizontalPageMargin * 2
+                x: rowCover.visible ? rowCover.x + rowCover.width + Theme.paddingMedium : Theme.horizontalPageMargin
+                width: parent.width - x - Theme.horizontalPageMargin
 
                 Row {
                     width: parent.width
@@ -241,12 +275,30 @@ Page {
                         if (model.creator !== "") parts.push(model.creator)
                         if (model.kindName !== "") parts.push(model.kindName)
                         if (!model.active) parts.push(model.state)
-                        if (model.loggedDays > 0) {
+                        if (model.extent > 0) {
+                            parts.push(qsTr("%1 of %2").arg(model.soFar).arg(model.extent))
+                        } else if (model.loggedDays > 0) {
                             parts.push(model.loggedDays === 1
                                 ? qsTr("1 day logged")
                                 : qsTr("%1 days logged").arg(model.loggedDays))
                         }
                         return parts.join(" · ")
+                    }
+                }
+
+                // How far in, when the length is known.
+                Rectangle {
+                    width: parent.width
+                    height: Math.max(2, Theme.paddingSmall / 2)
+                    radius: height / 2
+                    color: FiatMosTheme.dotIdle
+                    visible: model.extent > 0 && model.active
+
+                    Rectangle {
+                        width: parent.width * Math.min(1, model.extent > 0 ? model.soFar / model.extent : 0)
+                        height: parent.height
+                        radius: parent.radius
+                        color: FiatMosTheme.accent
                     }
                 }
 

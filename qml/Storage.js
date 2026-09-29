@@ -191,6 +191,25 @@ var MIGRATIONS = [
             "CREATE INDEX IF NOT EXISTS idx_log_entry_uid ON log_entry(uid)",
             "CREATE INDEX IF NOT EXISTS idx_item_uid ON item(uid)"
         ]
+    },
+    {
+        version: 9,
+        // How long an item is, and which edition it is.
+        //
+        // extent is the item's whole length in its KIND's unit: 330 pages, a
+        // 12-minute piece, 36 frames. It is the cataloguer's word for exactly
+        // this, and it is not called `length` because every JS object that
+        // comes back from a row would then have a `length` that is not one.
+        // Optional. Without it an item logs and totals as before; with it,
+        // progress and a finishing estimate can be worked out.
+        //
+        // isbn is stored as 13 digits, whatever was typed, so one book has one
+        // key. It also names the cover file, which lives outside the database
+        // and can always be fetched again from it.
+        statements: [
+            "ALTER TABLE item ADD COLUMN extent REAL",
+            "ALTER TABLE item ADD COLUMN isbn TEXT"
+        ]
     }
 ]
 
@@ -269,6 +288,39 @@ function addDays(d, n) {
     var r = new Date(d.getTime())
     r.setDate(r.getDate() + n)
     return r
+}
+
+// The day n days from today. dayOffsetKey(-1) is yesterday.
+function dayOffsetKey(n) {
+    return dayKey(addDays(new Date(), n))
+}
+
+// The logged_at for something that belongs to `day`.
+//
+// Today gets the real time. An earlier day gets one minute to midnight: late
+// in the day it belongs to, after anything that was logged as it happened.
+// created_at still says when the row was really written, so a late entry is
+// honest twice over and never pretends to have been on time.
+function loggedAtFor(day) {
+    if (day === undefined || day === null || day === "" || day === dayKey(new Date())) {
+        return localIso(new Date())
+    }
+    return day + "T23:59:00"
+}
+
+// The local day a created_at falls on.
+//
+// SQLite's datetime('now') is UTC and written with a space. Rows that came in
+// through import may carry a local ISO string with a T instead. Both happen,
+// so both are read.
+function createdDay(s) {
+    if (s === null || s === undefined || s === "") return ""
+    s = String(s)
+    if (s.indexOf("T") >= 0) return s.substr(0, 10)
+    var p = s.split(/[- :]/)
+    var d = new Date(Date.UTC(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10),
+                              parseInt(p[3] || "0", 10), parseInt(p[4] || "0", 10), parseInt(p[5] || "0", 10)))
+    return dayKey(d)
 }
 
 // Monday-based week key, e.g. "2026-W34". Used for weekly_n habits.
@@ -400,7 +452,11 @@ function unarchiveHabit(habitId) {
 // The UI must keep these two apart -- a ring for counted, a filled dot for
 // checked -- so the shape says which kind it is without relying on colour.
 function todayProgress(habit) {
-    var day = dayKey(new Date())
+    return progressOn(habit, dayKey(new Date()))
+}
+
+// The same question about any day. Yesterday's leftovers are asked this way.
+function progressOn(habit, day) {
     var rows = entriesOnDay(habit.id, day)
     var counted = habit.dailyTarget !== null && habit.dailyTarget > 0
 
@@ -446,6 +502,49 @@ function dayCompletion() {
         total: total,
         fraction: total > 0 ? completed / total : 0
     }
+}
+
+// What yesterday left undone.
+//
+// Daily habits only. A weekly quota or an interval habit that slipped
+// yesterday is still due today, so it is already in the list below; a daily
+// habit that slipped is gone from the list the moment the date changes, and
+// that is the one worth a second chance. A habit made today had no yesterday
+// to miss, and neither did an archived one.
+function yesterdayLeftovers() {
+    var day = dayOffsetKey(-1)
+    var out = []
+    var habits = allHabits(false)
+    for (var i = 0; i < habits.length; i++) {
+        var h = habits[i]
+        if (h.frequency !== "daily") continue
+        var born = createdDay(h.createdAt)
+        if (born !== "" && born > day) continue
+        var p = progressOn(h, day)
+        if (p.complete) continue
+        out.push({ habit: h, progress: p })
+    }
+    return out
+}
+
+function loadLeftovers(model) {
+    model.clear()
+    var list = yesterdayLeftovers()
+    for (var i = 0; i < list.length; i++) {
+        var h = list[i].habit, p = list[i].progress
+        model.append({
+            habitId: h.id,
+            name: h.name,
+            valueType: h.valueType,
+            unit: unitForHabit(h),
+            counted: p.counted,
+            fraction: p.fraction,
+            done: Math.round(p.done * 100) / 100,
+            target: p.target,
+            logged: p.logged
+        })
+    }
+    return model.count
 }
 
 // Fixed order, always. Untagged habits trail at the end.
@@ -561,7 +660,8 @@ function rowToEntry(row) {
         valueBool: row.value_bool,
         valueNumeric: row.value_numeric,
         valueScale: row.value_scale,
-        note: row.note === null ? "" : row.note
+        note: row.note === null ? "" : row.note,
+        createdAt: row.created_at
     }
 }
 
@@ -589,10 +689,14 @@ function loadEntriesForDay(model, habitId, day) {
     for (var i = 0; i < rows.length; i++) {
         var title = ""
         if (rows[i].valueType === "reference") title = itemTitleForEntry(rows[i].id)
+        var written = createdDay(rows[i].createdAt)
         model.append({
             entryId: rows[i].id,
             loggedAt: rows[i].loggedAt,
             timeLabel: rows[i].loggedAt.substr(11, 5),
+            // Written on a later day than the one it belongs to. Its clock
+            // time is the stand-in 23:59, so the page says "later" instead.
+            late: written !== "" && written > rows[i].loggedAt.substr(0, 10),
             valueType: rows[i].valueType,
             valueNumeric: rows[i].valueNumeric === null ? 0 : rows[i].valueNumeric,
             hasNumeric: rows[i].valueNumeric !== null,
@@ -746,10 +850,21 @@ function unitForHabit(habit) {
 
 // -- items -----------------------------------------------------------------
 
+// An extent of 0 or less, or one that is not a number, means "not known".
+function cleanExtent(v) {
+    if (v === undefined || v === null || v === "") return null
+    var n = Number(v)
+    return (isNaN(n) || n <= 0) ? null : n
+}
+
+function cleanIsbn(v) {
+    return (v === undefined || v === null || String(v).trim() === "") ? null : String(v).trim()
+}
+
 function addItem(o) {
     var id = -1
     db().transaction(function(tx) {
-        var r = tx.executeSql("INSERT INTO item (title, creator, kind_id, state, private, started_at, uid) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        var r = tx.executeSql("INSERT INTO item (title, creator, kind_id, state, private, started_at, extent, isbn, uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                               [o.title,
                                (o.creator === undefined || o.creator === "") ? null : o.creator,
                                (o.kindId === undefined || o.kindId < 0) ? null : o.kindId,
@@ -760,6 +875,8 @@ function addItem(o) {
                                "active",
                                o.private ? 1 : 0,
                                localIso(new Date()),
+                               cleanExtent(o.extent),
+                               cleanIsbn(o.isbn),
                                newUid()])
         id = r.insertId
     })
@@ -767,13 +884,17 @@ function addItem(o) {
     return id
 }
 
+// Every field is written, extent and isbn included, so the caller passes the
+// whole item. The only caller is the item editor, which always has all of it.
 function updateItem(o) {
     db().transaction(function(tx) {
-        tx.executeSql("UPDATE item SET title = ?, creator = ?, kind_id = ?, private = ? WHERE id = ?",
+        tx.executeSql("UPDATE item SET title = ?, creator = ?, kind_id = ?, private = ?, extent = ?, isbn = ? WHERE id = ?",
                       [o.title,
                        (o.creator === undefined || o.creator === "") ? null : o.creator,
                        (o.kindId === undefined || o.kindId < 0) ? null : o.kindId,
                        o.private ? 1 : 0,
+                       cleanExtent(o.extent),
+                       cleanIsbn(o.isbn),
                        o.id])
     })
     if (o.tags !== undefined) setItemTags(o.id, o.tags)
@@ -790,8 +911,29 @@ function rowToItem(row) {
         state: row.state,
         private: row.private === 1,
         startedAt: row.started_at,
-        finishedAt: row.finished_at
+        finishedAt: row.finished_at,
+        extent: (row.extent === null || row.extent === undefined) ? 0 : row.extent,
+        isbn: (row.isbn === null || row.isbn === undefined) ? "" : row.isbn
     }
+}
+
+function itemById(itemId) {
+    var it = null
+    db().readTransaction(function(tx) {
+        var r = tx.executeSql("SELECT i.*, k.name AS kind_name, k.unit AS unit FROM item i LEFT JOIN item_kind k ON k.id = i.kind_id WHERE i.id = ?", [itemId])
+        if (r.rows.length > 0) it = rowToItem(r.rows.item(0))
+    })
+    return it
+}
+
+// Everything ever logged against one item, whatever the period.
+function itemTotal(itemId) {
+    var n = 0
+    db().readTransaction(function(tx) {
+        var r = tx.executeSql("SELECT SUM(COALESCE(le.value_numeric, 0)) AS n FROM log_entry_item lei JOIN log_entry le ON le.id = lei.log_entry_id WHERE lei.item_id = ? AND " + LIVE_ENTRY, [itemId])
+        if (r.rows.length > 0 && r.rows.item(0).n !== null) n = r.rows.item(0).n
+    })
+    return n
 }
 
 // filter: { kindId, active, tag, includePrivate }  -- every field optional
@@ -849,7 +991,10 @@ function loadItems(model, filter) {
             tagList: itemTags(it.id).join(", "),
             loggedDays: itemLogCount(it.id),
             startedAt: it.startedAt === null ? "" : it.startedAt,
-            finishedAt: it.finishedAt === null ? "" : it.finishedAt
+            finishedAt: it.finishedAt === null ? "" : it.finishedAt,
+            extent: it.extent,
+            isbn: it.isbn,
+            soFar: it.extent > 0 ? Math.round(itemTotal(it.id) * 100) / 100 : 0
         })
     }
     return model.count
@@ -922,9 +1067,11 @@ function itemTitleForEntry(entryId) {
     return t
 }
 
-// One log_entry plus the junction row that ties it to an item.
-function addReferenceEntry(habit, itemId, numeric, note) {
-    var entryId = addEntry(habit, { numeric: (numeric === null || numeric === undefined) ? null : numeric, note: note })
+// One log_entry plus the junction row that ties it to an item. `day` is
+// optional and means today when left out.
+function addReferenceEntry(habit, itemId, numeric, note, day) {
+    var entryId = addEntry(habit, { numeric: (numeric === null || numeric === undefined) ? null : numeric,
+                                    note: note, loggedAt: loggedAtFor(day) })
     db().transaction(function(tx) {
         tx.executeSql("INSERT INTO log_entry_item (log_entry_id, item_id) VALUES (?, ?)", [entryId, itemId])
     })
@@ -1082,6 +1229,207 @@ function habitTotal(habit, lookbackDays) {
 }
 
 // ---------------------------------------------------------------------------
+// The year at a glance, and the library's statistics
+// ---------------------------------------------------------------------------
+//
+// Everything below is worked out from log_entry every time it is asked for,
+// like the rest of the analysis. Nothing here writes.
+
+function medianOf(values) {
+    if (values.length === 0) return null
+    var s = values.slice().sort(function(a, b) { return a - b })
+    var mid = Math.floor(s.length / 2)
+    return s.length % 2 === 1 ? s[mid] : (s[mid - 1] + s[mid]) / 2
+}
+
+// Two facts about a series of days: the longest run of days in a row with
+// anything logged, and the month with the most in it.
+//
+// `countDays` says what "most" means. For a number it is the sum; for a tick
+// or a rating it is how many days were logged, because a month of sleep
+// ratings does not add up to anything.
+function calendarFacts(days, countDays) {
+    var run = 0, best = 0, prev = null
+    var months = {}, order = []
+    for (var i = 0; i < days.length; i++) {
+        var d = days[i]
+        if (d.value === null || d.value === undefined) { run = 0; prev = null; continue }
+        run = (prev !== null && dateFromDayKey(d.day).getTime() - dateFromDayKey(prev).getTime() === 86400000)
+            ? run + 1 : 1
+        prev = d.day
+        if (run > best) best = run
+        var m = d.day.substr(0, 7)
+        if (months[m] === undefined) { months[m] = 0; order.push(m) }
+        months[m] += countDays ? 1 : d.value
+    }
+    var bestMonth = "", bestValue = 0
+    for (var j = 0; j < order.length; j++) {
+        if (months[order[j]] > bestValue) { bestValue = months[order[j]]; bestMonth = order[j] }
+    }
+    return { longestRun: best, bestMonth: bestMonth, bestMonthValue: Math.round(bestValue * 100) / 100 }
+}
+
+// Days summed into Monday-to-Sunday weeks, oldest first. The first bucket
+// starts on the Monday on or before the first day, so every bar is a real
+// calendar week and not a seven-day window that happens to start on a Thursday.
+function weeklyBuckets(days) {
+    if (days.length === 0) return []
+    var first = dateFromDayKey(days[0].day)
+    var monday = addDays(first, -((first.getDay() + 6) % 7))
+    var out = []
+    for (var i = 0; i < days.length; i++) {
+        var d = dateFromDayKey(days[i].day)
+        var idx = Math.floor(Math.round((d.getTime() - monday.getTime()) / 86400000) / 7)
+        while (out.length <= idx) out.push({ start: dayKey(addDays(monday, out.length * 7)), value: 0 })
+        if (days[i].value !== null) out[idx].value += days[i].value
+    }
+    return out
+}
+
+// Sums per weekday, Monday first.
+function weekdayTotals(days) {
+    var out = [0, 0, 0, 0, 0, 0, 0]
+    for (var i = 0; i < days.length; i++) {
+        if (days[i].value === null) continue
+        out[(dateFromDayKey(days[i].day).getDay() + 6) % 7] += days[i].value
+    }
+    return out
+}
+
+// One kind over a period: what was read, watched, played or shot, when, and
+// in what.
+//
+// Two kinds of total per item, and they answer different questions. `total`
+// is inside the period -- this is what the numbers and the charts are made
+// of. `soFar` is everything ever logged against it, because a book begun in
+// March and still going in September is 60 % read, not 60 % read since June.
+// Progress always uses soFar.
+//
+// Private items are left out unless asked for, the same rule as Totals, and
+// the page is told how many were left out so it can say so.
+function kindStats(kindId, lookbackDays, includePrivate) {
+    var firstDay = dayOffsetKey(-(lookbackDays - 1))
+    var perDay = {}
+    var byItem = {}, ids = []
+    var hidden = {}, hiddenCount = 0
+
+    db().readTransaction(function(tx) {
+        var r = tx.executeSql("SELECT substr(le.logged_at, 1, 10) AS day, COALESCE(le.value_numeric, 0) AS v, i.id AS item_id, i.private AS private FROM item i JOIN log_entry_item lei ON lei.item_id = i.id JOIN log_entry le ON le.id = lei.log_entry_id WHERE i.kind_id = ? AND substr(le.logged_at, 1, 10) >= ? AND " + LIVE_ENTRY + " ORDER BY le.logged_at, le.id", [kindId, firstDay])
+        for (var i = 0; i < r.rows.length; i++) {
+            var row = r.rows.item(i)
+            if (row.private === 1 && includePrivate !== true) {
+                if (!hidden[row.item_id]) { hidden[row.item_id] = true; hiddenCount++ }
+                continue
+            }
+            perDay[row.day] = (perDay[row.day] || 0) + row.v
+            var b = byItem[row.item_id]
+            if (b === undefined) {
+                b = byItem[row.item_id] = { total: 0, days: {}, dayCount: 0, first: row.day, last: row.day }
+                ids.push(row.item_id)
+            }
+            b.total += row.v
+            if (!b.days[row.day]) { b.days[row.day] = true; b.dayCount++ }
+            b.last = row.day
+        }
+    })
+
+    var series = []
+    var total = 0, loggedDays = 0
+    for (var k = 0; k < lookbackDays; k++) {
+        var key = dayOffsetKey(-(lookbackDays - 1) + k)
+        var v = perDay[key] === undefined ? null : perDay[key]
+        if (v !== null) { total += v; loggedDays++ }
+        series.push({ day: key, value: v })
+    }
+
+    var list = [], finished = 0
+    for (var j = 0; j < ids.length; j++) {
+        var it = itemById(ids[j])
+        if (it === null) continue
+        var s = byItem[ids[j]]
+        var done = !isActiveState(it.state) && it.finishedAt !== null && it.finishedAt !== undefined
+                   && it.finishedAt.substr(0, 10) >= firstDay
+        if (done) finished++
+        list.push({
+            id: it.id, title: it.title, creator: it.creator, state: it.state,
+            finishedAt: it.finishedAt === null ? "" : it.finishedAt,
+            finishedHere: done,
+            extent: it.extent, isbn: it.isbn, private: it.private,
+            total: Math.round(s.total * 100) / 100, days: s.dayCount,
+            first: s.first, last: s.last,
+            soFar: Math.round(itemTotal(it.id) * 100) / 100
+        })
+    }
+
+    return {
+        kind: kindById(kindId),
+        firstDay: firstDay,
+        series: series,
+        total: Math.round(total * 100) / 100,
+        days: loggedDays,
+        itemCount: list.length,
+        finished: finished,
+        hiddenPrivate: hiddenCount,
+        items: list
+    }
+}
+
+// One item, over its whole life: every sitting, and how far there is to go.
+//
+// A sitting is a DAY, not an entry. Two entries on one evening are one
+// evening's reading, and a median of half-evenings would describe nobody.
+function itemStats(itemId) {
+    var it = itemById(itemId)
+    if (it === null) return null
+
+    var perDay = {}, order = []
+    db().readTransaction(function(tx) {
+        var r = tx.executeSql("SELECT substr(le.logged_at, 1, 10) AS day, COALESCE(le.value_numeric, 0) AS v FROM log_entry_item lei JOIN log_entry le ON le.id = lei.log_entry_id WHERE lei.item_id = ? AND " + LIVE_ENTRY + " ORDER BY le.logged_at, le.id", [itemId])
+        for (var i = 0; i < r.rows.length; i++) {
+            var row = r.rows.item(i)
+            if (perDay[row.day] === undefined) { perDay[row.day] = 0; order.push(row.day) }
+            perDay[row.day] += row.v
+        }
+    })
+
+    var sittings = [], values = [], total = 0, best = 0
+    for (var j = 0; j < order.length; j++) {
+        var v = Math.round(perDay[order[j]] * 100) / 100
+        sittings.push({ day: order[j], value: v })
+        values.push(v)
+        total += v
+        if (v > best) best = v
+    }
+    total = Math.round(total * 100) / 100
+
+    // Only amounts that were actually counted make a pace. A day marked read
+    // with no number is still a sitting, but it says nothing about speed.
+    var counted = []
+    for (var c = 0; c < values.length; c++) if (values[c] > 0) counted.push(values[c])
+    var median = medianOf(counted)
+    if (median !== null) median = Math.round(median * 100) / 100
+
+    var left = it.extent > 0 ? Math.max(0, Math.round((it.extent - total) * 100) / 100) : null
+    var estimate = (left !== null && left > 0 && median !== null && median > 0) ? Math.ceil(left / median) : null
+
+    return {
+        item: it,
+        unit: it.unit,
+        sittings: sittings,
+        total: total,
+        days: sittings.length,
+        median: median,
+        best: best,
+        first: order.length > 0 ? order[0] : "",
+        last: order.length > 0 ? order[order.length - 1] : "",
+        fraction: it.extent > 0 ? Math.min(1, total / it.extent) : null,
+        left: left,
+        estimate: estimate,
+        tags: itemTags(itemId)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Structured template -- sessions
 // ---------------------------------------------------------------------------
 
@@ -1206,14 +1554,18 @@ function lastSession(habitId, routineId) {
 // Components with no name are dropped; so are detail rows where every field is
 // empty.
 //
+// `day` is optional and means today. Yesterday's forgotten session is saved
+// the same way, one per day there too.
+//
 // comps: [{ name, details: [{reps, weight, duration, note}] }]
-function saveSession(habit, routineId, comps, note) {
-    var existing = todaysSession(habit.id)
+function saveSession(habit, routineId, comps, note, day) {
+    var theDay = (day === undefined || day === null || day === "") ? dayKey(new Date()) : day
+    var existing = sessionForDay(habit.id, theDay)
 
     // The entry is written once a day, by whichever save comes first.
     var entryId = (existing !== null && existing.entryId !== null && existing.entryId !== undefined)
         ? existing.entryId
-        : addEntry(habit, { note: note })
+        : addEntry(habit, { note: note, loggedAt: loggedAtFor(theDay) })
     var sessionId = existing === null ? -1 : existing.id
 
     db().transaction(function(tx) {
@@ -1226,7 +1578,7 @@ function saveSession(habit, routineId, comps, note) {
             tx.executeSql("UPDATE session SET routine_id = ? WHERE id = ?", [rid, sessionId])
         } else {
             var r = tx.executeSql("INSERT INTO session (habit_id, routine_id, started_at, log_entry_id, uid) VALUES (?, ?, ?, ?, ?)",
-                                  [habit.id, rid, localIso(new Date()), entryId, newUid()])
+                                  [habit.id, rid, loggedAtFor(theDay), entryId, newUid()])
             sessionId = r.insertId
         }
 
@@ -1543,7 +1895,9 @@ function exportAll() {
             out.items.push({
                 ref: look("item", it.id), title: it.title, creator: it.creator,
                 kind: look("item_kind", it.kind_id), state: it.state,
-                private: it.private, startedAt: it.started_at, finishedAt: it.finished_at
+                private: it.private, startedAt: it.started_at, finishedAt: it.finished_at,
+                extent: it.extent === undefined ? null : it.extent,
+                isbn: it.isbn === undefined ? null : it.isbn
             })
         }
 
@@ -1692,10 +2046,13 @@ function importAll(data) {
         var items = data.items || []
         for (i = 0; i < items.length; i++) {
             var it = items[i]
-            var ir = tx.executeSql("INSERT INTO item (title, creator, kind_id, state, private, started_at, finished_at, uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            // extent and isbn arrived in schema 9. A file from before then
+            // simply has neither, and the item comes in without them.
+            var ir = tx.executeSql("INSERT INTO item (title, creator, kind_id, state, private, started_at, finished_at, extent, isbn, uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                                    [it.title, it.creator, id("item_kind", it.kind),
                                     it.state || "active", it.private ? 1 : 0,
-                                    it.startedAt, it.finishedAt, keep(it.ref)])
+                                    it.startedAt, it.finishedAt,
+                                    cleanExtent(it.extent), cleanIsbn(it.isbn), keep(it.ref)])
             map.item[it.ref] = ir.insertId
             counts.items++
         }

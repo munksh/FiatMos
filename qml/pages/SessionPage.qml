@@ -18,6 +18,9 @@ import "../Storage.js" as Storage
 // delete waits three seconds with a way out. Tapping a card turns it into
 // fields. That order matters: a row full of live text fields cannot also be a
 // swipe target, because every horizontal drag would land on a cursor instead.
+//
+// Like the log page it works on one day, today or yesterday, and there is
+// still only ever one session per day.
 
 Page {
     id: page
@@ -28,6 +31,12 @@ Page {
     property var routineList: []
     property int routineId: -1          // -1 = ad hoc
     property int gen: 0
+    property int dayOffset: 0           // 0 today, -1 yesterday
+    property string day: ""
+    // Whether you have changed anything since the page was filled. Only then
+    // is there something to save on the way out -- a page prefilled from last
+    // Tuesday and left untouched is not a workout.
+    property bool touched: false
     property int renamingIndex: -1      // which exercise is being renamed
     // Which set is open as fields. Closing one re-reads the card, because the
     // text fields write straight into `comps` and the reading row is built from
@@ -93,12 +102,14 @@ Page {
     }
 
     function addExercise() {
+        touched = true
         comps.push({ name: "", details: [emptyDetail()] })
         renamingIndex = comps.length - 1     // a new exercise needs a name first
         bump()
     }
 
     function duplicateExercise(i) {
+        touched = true
         var src = comps[i]
         var copy = { name: src.name, details: [] }
         for (var j = 0; j < src.details.length; j++) copy.details.push(copyDetail(src.details[j]))
@@ -107,6 +118,7 @@ Page {
     }
 
     function removeExercise(i) {
+        touched = true
         comps.splice(i, 1)
         renamingIndex = -1
         editingSet = ""
@@ -117,12 +129,14 @@ Page {
     function addSet(i) {
         // Start from the previous set rather than from nothing -- the second
         // set of an exercise is almost always the first one again.
+        touched = true
         var d = comps[i].details
         comps[i].details.push(d.length > 0 ? copyDetail(d[d.length - 1]) : emptyDetail())
         bump()
     }
 
     function removeSet(c, s) {
+        touched = true
         var d = comps[c].details
         d.splice(s, 1)
         if (d.length === 0) d.push(emptyDetail())
@@ -162,8 +176,10 @@ Page {
         var newName = routineNameField.text.trim()
         if (rid < 0 && newName !== "") rid = Storage.addRoutine(habitId, newName)
 
-        Storage.saveSession(habit, rid, payload, sessionNoteField.text.trim())
+        Storage.saveSession(habit, rid, payload, sessionNoteField.text.trim(), page.day)
         page.saved = true
+        page.touched = false
+        page.continuing = true
     }
 
     // Whether there is anything worth writing. An empty page that was opened
@@ -194,39 +210,66 @@ Page {
     // is the only way to leave with a routine name you just typed.
     function autosave() {
         if (habit === null) return
+        if (!touched) return
         if (!worthSaving()) return
         save()
+    }
+
+    // Fills the page for the chosen day.
+    //
+    // That day's session first. If you are already mid-workout, the page
+    // continues where you were rather than offering last Tuesday as a
+    // template -- and Save then rewrites that same session.
+    function loadDay() {
+        day = Storage.dayOffsetKey(dayOffset)
+        renamingIndex = -1
+        editingSet = ""
+        pendingSet = ""
+        continuing = false
+
+        var existing = Storage.sessionForDay(habitId, day)
+        if (existing !== null && existing.components.length > 0) {
+            routineId = (existing.routineId === null || existing.routineId === undefined) ? -1 : existing.routineId
+            var next = []
+            for (var i = 0; i < existing.components.length; i++) {
+                next.push({ name: existing.components[i].name,
+                            details: fromStored(existing.components[i].details) })
+            }
+            comps = next
+            continuing = true
+            bump()
+        } else {
+            var last = Storage.lastSession(habitId, null)
+            if (last !== null && last.routineId !== null && last.routineId !== undefined) {
+                selectRoutine(last.routineId)
+            } else {
+                routineId = -1
+                comps = [{ name: "", details: [emptyDetail()] }]
+                renamingIndex = 0
+                bump()
+            }
+        }
+        touched = false
+    }
+
+    // Whatever you changed on the day you were on is kept before the page
+    // moves to the other one.
+    function switchDay(offset) {
+        if (offset === dayOffset) return
+        autosave()
+        dayOffset = offset
+        loadDay()
+    }
+
+    function weekday(key) {
+        if (key === "") return ""
+        return Qt.formatDate(Storage.dateFromDayKey(key), "dddd")
     }
 
     Component.onCompleted: {
         habit = Storage.getHabit(habitId)
         routineList = Storage.routines(habitId)
-
-        // Today's session first. If you are already mid-workout, the page
-        // continues where you were rather than offering last Tuesday as a
-        // template -- and Save then rewrites that same session.
-        var today = Storage.todaysSession(habitId)
-        if (today !== null && today.components.length > 0) {
-            routineId = (today.routineId === null || today.routineId === undefined) ? -1 : today.routineId
-            var next = []
-            for (var i = 0; i < today.components.length; i++) {
-                next.push({ name: today.components[i].name,
-                            details: fromStored(today.components[i].details) })
-            }
-            comps = next
-            continuing = true
-            bump()
-            return
-        }
-
-        var last = Storage.lastSession(habitId, null)
-        if (last !== null && last.routineId !== null && last.routineId !== undefined) {
-            selectRoutine(last.routineId)
-        } else {
-            comps = [{ name: "", details: [emptyDetail()] }]
-            renamingIndex = 0
-            bump()
-        }
+        loadDay()
     }
 
     // True when the page opened onto a session that already existed today.
@@ -284,7 +327,32 @@ Page {
                 }
                 // Says which of the two things is happening, because the page
                 // looks identical either way and the difference matters.
-                subtitle: page.continuing ? qsTr("today's session") : qsTr("new session")
+                subtitle: {
+                    if (page.dayOffset === 0) return page.continuing ? qsTr("today's session") : qsTr("new session")
+                    return page.continuing ? qsTr("yesterday's session") : qsTr("new session for yesterday")
+                }
+            }
+
+            // -- Which day ----------------------------------------------------
+
+            Flow {
+                x: Theme.horizontalPageMargin
+                width: parent.width - Theme.horizontalPageMargin * 2
+                spacing: Theme.paddingSmall
+
+                Pill {
+                    text: qsTr("today")
+                    selected: page.dayOffset === 0
+                    onClicked: page.switchDay(0)
+                }
+                Pill {
+                    text: {
+                        var _g = page.gen
+                        return qsTr("yesterday · %1").arg(Qt.formatDate(Storage.dateFromDayKey(Storage.dayOffsetKey(-1)), "ddd d"))
+                    }
+                    selected: page.dayOffset === -1
+                    onClicked: page.switchDay(-1)
+                }
             }
 
             // -- Routine ------------------------------------------------------
@@ -398,7 +466,10 @@ Page {
                         placeholderText: qsTr("Exercise")
                         color: FiatMosTheme.primaryText
                         Component.onCompleted: text = page.comps[compColumn.compIndex].name
-                        onTextChanged: page.comps[compColumn.compIndex].name = text
+                        onTextChanged: {
+                            page.comps[compColumn.compIndex].name = text
+                            if (activeFocus) page.touched = true
+                        }
                         EnterKey.iconSource: "image://theme/icon-m-enter-close"
                         EnterKey.onClicked: {
                             focus = false
@@ -622,7 +693,10 @@ Page {
                                             inputMethodHints: Qt.ImhDigitsOnly
                                             color: FiatMosTheme.primaryText
                                             Component.onCompleted: text = setWrap.detail().reps
-                                            onTextChanged: setWrap.detail().reps = text
+                                            onTextChanged: {
+                                                setWrap.detail().reps = text
+                                                if (activeFocus) page.touched = true
+                                            }
                                             EnterKey.iconSource: "image://theme/icon-m-enter-next"
                                             EnterKey.onClicked: focus = false
                                         }
@@ -635,7 +709,10 @@ Page {
                                             inputMethodHints: Qt.ImhFormattedNumbersOnly
                                             color: FiatMosTheme.primaryText
                                             Component.onCompleted: text = setWrap.detail().weight
-                                            onTextChanged: setWrap.detail().weight = text
+                                            onTextChanged: {
+                                                setWrap.detail().weight = text
+                                                if (activeFocus) page.touched = true
+                                            }
                                             EnterKey.iconSource: "image://theme/icon-m-enter-close"
                                             EnterKey.onClicked: focus = false
                                         }
@@ -648,7 +725,10 @@ Page {
                                             inputMethodHints: Qt.ImhFormattedNumbersOnly
                                             color: FiatMosTheme.primaryText
                                             Component.onCompleted: text = setWrap.detail().minutes
-                                            onTextChanged: setWrap.detail().minutes = text
+                                            onTextChanged: {
+                                                setWrap.detail().minutes = text
+                                                if (activeFocus) page.touched = true
+                                            }
                                             EnterKey.iconSource: "image://theme/icon-m-enter-close"
                                             EnterKey.onClicked: focus = false
                                         }
@@ -660,7 +740,10 @@ Page {
                                             placeholderText: qsTr("Note")
                                             color: FiatMosTheme.primaryText
                                             Component.onCompleted: text = setWrap.detail().note
-                                            onTextChanged: setWrap.detail().note = text
+                                            onTextChanged: {
+                                                setWrap.detail().note = text
+                                                if (activeFocus) page.touched = true
+                                            }
                                             EnterKey.iconSource: "image://theme/icon-m-enter-close"
                                             EnterKey.onClicked: focus = false
                                         }
@@ -761,6 +844,7 @@ Page {
                 label: qsTr("Save as routine (optional)")
                 placeholderText: qsTr("Name this routine to reuse it")
                 color: FiatMosTheme.primaryText
+                onTextChanged: if (activeFocus) page.touched = true
                 EnterKey.iconSource: "image://theme/icon-m-enter-close"
                 EnterKey.onClicked: focus = false
             }
@@ -771,6 +855,7 @@ Page {
                 label: qsTr("Session note (optional)")
                 placeholderText: qsTr("How did it go?")
                 color: FiatMosTheme.primaryText
+                onTextChanged: if (activeFocus) page.touched = true
                 EnterKey.iconSource: "image://theme/icon-m-enter-close"
                 EnterKey.onClicked: focus = false
             }
@@ -791,7 +876,10 @@ Page {
             // "Finish" rather than "Save": the page saves itself on the way
             // out now, so this button is not the thing that keeps your work.
             // It is how you say the workout is over.
-            text: page.continuing ? qsTr("Finish session") : qsTr("Save session")
+            text: {
+                if (page.dayOffset !== 0) return qsTr("Save for %1").arg(page.weekday(page.day))
+                return page.continuing ? qsTr("Finish session") : qsTr("Save session")
+            }
             enabled: {
                 var _g = page.gen
                 if (page.habit === null) return false
