@@ -58,6 +58,7 @@ DISTFILES += \
     qml/components/ProgressRing.qml \
     qml/components/SectionLabel.qml \
     qml/components/Shelf.qml \
+    qml/components/Sparkline.qml \
     qml/components/SwitchRow.qml \
     qml/components/ValueRow.qml \
     qml/cover/CoverPage.qml \

@@ -2158,22 +2158,48 @@ function thingStats(itemId) {
     }
 }
 
-// For the Practice page: every thing of a kind with the last time it was done.
+// For the Workouts page: every exercise of a kind, with what it was last
+// time, a short run of recent values for the little line, and how far it
+// has come since the first day.
+//
+// The value is the exercise page's own: the heaviest weight, the minutes,
+// the distance -- and for an exercise with no weight yet, the most reps in
+// one set, which is what anyone means by "how many pull-ups can you do".
+var SPARK_DAYS = 8
+
 function loadThings(model, kindId) {
     model.clear()
     var list = things(kindId, false)
     var rows = []
     for (var i = 0; i < list.length; i++) {
+        var m = list[i].measure
         var days = thingDays(list[i].id)
+        var facts = []
+        var weighted = false
+        for (var d = 0; d < days.length; d++) {
+            var f = dayFacts(days[d].details, m)
+            if (f.top > 0) weighted = true
+            facts.push(f)
+        }
+        var bodyweight = m === "weight_reps" && !weighted
+        var values = []
+        for (var v = 0; v < facts.length; v++) values.push(bodyweight ? facts[v].maxSet : facts[v].value)
         var lastDay = days.length > 0 ? days[days.length - 1] : null
+        var latest = values.length > 0 ? values[values.length - 1] : 0
+        var first = values.length > 0 ? values[0] : 0
         rows.push({
             itemId: list[i].id,
             title: list[i].title,
-            measure: list[i].measure,
+            measure: m,
             isPrivate: list[i].private,
             count: days.length,
             lastDay: lastDay === null ? "" : lastDay.day,
-            lastSummary: lastDay === null ? "" : setSummary(lastDay.details, list[i].measure),
+            firstDay: days.length > 0 ? days[0].day : "",
+            lastSummary: lastDay === null ? "" : setSummary(lastDay.details, m),
+            value: round2(latest),
+            change: days.length > 1 ? round2(latest - first) : 0,
+            unit: bodyweight ? "set" : valueUnit(m, facts.length > 0 ? facts[facts.length - 1] : null),
+            spark: JSON.stringify(values.slice(-SPARK_DAYS)),
             tagList: itemTags(list[i].id).join(", ")
         })
     }
@@ -2184,6 +2210,32 @@ function loadThings(model, kindId) {
     })
     for (var j = 0; j < rows.length; j++) model.append(rows[j])
     return model.count
+}
+
+// The week so far, for the top of the Workouts page: which days of this week
+// (Monday first) had a workout, and how many workouts this week and last.
+// A workout is one Work out habit on one day, however often it was saved.
+function workoutWeek() {
+    var today = new Date()
+    var monday = addDays(today, -((today.getDay() + 6) % 7))
+    var thisStart = dayKey(monday)
+    var lastStart = dayKey(addDays(monday, -7))
+    var days = [false, false, false, false, false, false, false]
+    var thisCount = 0, lastCount = 0
+    db().readTransaction(function(tx) {
+        var r = tx.executeSql("SELECT DISTINCT s.habit_id AS h, substr(s.started_at, 1, 10) AS day FROM session s JOIN habit hb ON hb.id = s.habit_id WHERE hb.value_type = 'structured' AND hb.archived_at IS NULL AND substr(s.started_at, 1, 10) >= ?", [lastStart])
+        for (var i = 0; i < r.rows.length; i++) {
+            var key = r.rows.item(i).day
+            if (key >= thisStart) {
+                thisCount++
+                var idx = Math.round((dateFromDayKey(key).getTime() - dateFromDayKey(thisStart).getTime()) / 86400000)
+                if (idx >= 0 && idx < 7) days[idx] = true
+            } else {
+                lastCount++
+            }
+        }
+    })
+    return { days: days, thisWeek: thisCount, lastWeek: lastCount, todayIndex: (today.getDay() + 6) % 7 }
 }
 
 // A new thing to practise, from the Practice page rather than from a session.

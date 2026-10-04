@@ -19,7 +19,7 @@ function makeTx() { return { executeSql(sql, params) {
 const fakeDb = { transaction: cb => cb(makeTx()), readTransaction: cb => cb(makeTx()) }
 const sb = { LS: { LocalStorage: { openDatabaseSync: () => fakeDb } }, console: { log(){} }, Date, Math, parseInt, parseFloat, isNaN, JSON, Number, String }
 vm.createContext(sb)
-vm.runInContext(src + ';globalThis.__S={init,MIGRATIONS,currentVersion,addHabit,getHabit,lastSession,sessionForDay,saveSession,kinds,kindById,addKind,starterKinds,STARTER_KINDS,items,itemById,addItem,things,thingDays,thingStats,dayFacts,setSummary,lastTimeFor,thingSuggestions,thingIdByName,habitThings,habitFacts,addEntry,loadThings,addThing,updateThing,hasShelf,hasPractice,programs,addRoutine,exportAll,importAll,dayKey,addDays,dayOffsetKey,entriesSince,MEASURES,cleanMeasure,addReferenceEntry,itemsForHabit,kindStats}', sb)
+vm.runInContext(src + ';globalThis.__S={init,MIGRATIONS,currentVersion,addHabit,getHabit,lastSession,sessionForDay,saveSession,kinds,kindById,addKind,starterKinds,STARTER_KINDS,items,itemById,addItem,things,thingDays,thingStats,dayFacts,setSummary,lastTimeFor,thingSuggestions,thingIdByName,habitThings,habitFacts,workoutWeek,addEntry,loadThings,addThing,updateThing,hasShelf,hasPractice,programs,addRoutine,exportAll,importAll,dayKey,addDays,dayOffsetKey,entriesSince,MEASURES,cleanMeasure,addReferenceEntry,itemsForHabit,kindStats}', sb)
 const S = sb.__S
 
 let fails = 0
@@ -298,6 +298,21 @@ ok('streak', wf.streak === 4, wf)
 const sleep = S.addHabit({ name: 'Sleep', valueType: 'scale', scaleMax: 5, frequency: 'daily' })
 S.addEntry(S.getHabit(sleep), { scale: 4, loggedAt: day(0) + 'T07:00:00' })
 ok('a rating has a month mean', S.habitFacts(S.getHabit(sleep)).thisMonth === 4)
+
+// ---------------------------------------------------------------------------
+// The Workouts list and the week
+// ---------------------------------------------------------------------------
+const lm = []; lm.clear = () => { lm.length = 0 }; lm.append = o => lm.push(o); Object.defineProperty(lm, 'count', { get() { return lm.length } })
+S.loadThings(lm, g2.kindId)
+const benchRow = lm.find(r => r.title.indexOf('Bench press') === 0)
+ok('a row carries the latest value', benchRow.value === 70, benchRow)
+ok('and how far it has come', benchRow.change === 20, benchRow)
+ok('and a short run for the little line', JSON.parse(benchRow.spark).join() === '50,65,70', benchRow.spark)
+ok('in kg', benchRow.unit === 'kg')
+const wk = S.workoutWeek()
+ok('the week has seven days', wk.days.length === 7)
+ok('today has a workout', wk.days[wk.todayIndex] === true, wk)
+ok('this week counts workouts, not saves', wk.thisWeek >= 1, wk)
 
 console.log(fails === 0 ? '\nALL PASS' : '\n' + fails + ' FAILURES')
 process.exit(fails ? 1 : 0)

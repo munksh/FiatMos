@@ -13,8 +13,9 @@ import "../Measures.js" as Measures
 // make a line, and every day on a row of its own.
 //
 // The line is drawn through one number per day -- the heaviest weight, the
-// reps while there is no weight yet, the minutes, the distance -- from zero,
-// so that a few kilos read as a few kilos and not as a cliff.
+// reps while there is no weight yet, the minutes, the distance -- from the
+// lowest day to the highest, so that change is visible. What it spans is
+// written above it, so the size of the change is never left to the eye.
 //
 // Nothing here is stored. It is all worked out from the sessions each time.
 
@@ -229,7 +230,21 @@ Page {
                     return page.st !== null && page.st.count >= 4
                 }
 
-                Item { width: 1; height: Theme.paddingSmall }
+                // What the line spans, said once above it, so the size of
+                // the change is never left to the eye.
+                Label {
+                    anchors.right: parent.right
+                    font.pixelSize: Theme.fontSizeTiny
+                    color: FiatMosTheme.secondaryText
+                    text: {
+                        var _g = page.gen
+                        if (page.st === null || page.st.days.length === 0) return ""
+                        var d = page.st.days, lo = d[0].value, hi = d[0].value
+                        for (var i = 1; i < d.length; i++) { if (d[i].value < lo) lo = d[i].value; if (d[i].value > hi) hi = d[i].value }
+                        return lo === hi ? qsTr("level at %1").arg(page.said(hi))
+                                         : qsTr("from %1 to %2").arg(page.num(lo)).arg(page.said(hi))
+                    }
+                }
 
                 Canvas {
                     id: lineChart
@@ -254,9 +269,11 @@ Page {
                         ctx.clearRect(0, 0, width, height)
                         if (page.st === null || page.st.days.length < 2) return
                         var d = page.st.days
-                        var hi = 0
-                        for (var i = 0; i < d.length; i++) if (d[i].value > hi) hi = d[i].value
-                        if (hi <= 0) hi = 1
+                        var lo = d[0].value, hi = d[0].value
+                        for (var i = 1; i < d.length; i++) {
+                            if (d[i].value < lo) lo = d[i].value
+                            if (d[i].value > hi) hi = d[i].value
+                        }
                         var pad = Theme.paddingSmall * 1.5
                         // Spaced by date, not by index: three sessions in one
                         // week and then a month's gap should look like that.
@@ -264,7 +281,8 @@ Page {
                         var t1 = Storage.dateFromDayKey(d[d.length - 1].day).getTime()
                         var span = Math.max(1, t1 - t0)
                         function px(k) { return pad + (Storage.dateFromDayKey(d[k].day).getTime() - t0) / span * (width - pad * 2) }
-                        function py(v) { return height - 1 - v / hi * (height - pad * 2) }
+                        // No change at all is a level line through the middle.
+                        function py(v) { return hi === lo ? height / 2 : height - pad - (v - lo) / (hi - lo) * (height - pad * 2) }
 
                         ctx.strokeStyle = FiatMosTheme.innerBorder
                         ctx.lineWidth = 1
@@ -292,18 +310,6 @@ Page {
                         }
                     }
 
-                    // What the top of the line is, written at the top.
-                    Label {
-                        anchors.right: parent.right
-                        anchors.top: parent.top
-                        anchors.topMargin: -Theme.paddingSmall
-                        font.pixelSize: Theme.fontSizeTiny
-                        color: FiatMosTheme.secondaryText
-                        text: {
-                            var _g = page.gen
-                            return page.st === null || page.st.best === null ? "" : page.said(page.st.best.value)
-                        }
-                    }
                 }
 
                 Item {

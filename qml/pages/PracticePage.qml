@@ -27,6 +27,44 @@ Page {
     property var kindList: []
     property int kindId: -1
     property var programList: []
+    property var week: ({ days: [false, false, false, false, false, false, false], thisWeek: 0, lastWeek: 0, todayIndex: 0 })
+
+    function accent(t) {
+        return "<font color=\"" + FiatMosTheme.accent + "\">" + t + "</font>"
+    }
+
+    // "This week: 4 workouts, 3 more than last."
+    function weekSentence() {
+        var w = page.week
+        var n = w.thisWeek === 1 ? qsTr("1 workout") : qsTr("%1 workouts").arg(w.thisWeek)
+        var head = qsTr("This week: %1").arg(page.accent(n))
+        var d = w.thisWeek - w.lastWeek
+        if (w.lastWeek === 0 && w.thisWeek === 0) return qsTr("No workouts this week yet.")
+        if (d === 0) return head + qsTr(", as many as last week.")
+        if (d > 0) return head + (d === 1 ? qsTr(", 1 more than last week.") : qsTr(", %1 more than last week.").arg(d))
+        return head + (d === -1 ? qsTr(", 1 fewer than last week.") : qsTr(", %1 fewer than last week.").arg(-d))
+    }
+
+    function valueText(v, unit) {
+        var n = String(Math.round(v * 10) / 10)
+        return n
+    }
+
+    function unitText(unit) {
+        if (unit === "set") return qsTr("in a set")
+        if (unit === "reps") return qsTr("reps")
+        if (unit === "min") return qsTr("min")
+        if (unit === "km") return qsTr("km")
+        return qsTr("kg")
+    }
+
+    function changeText(change, unit, firstDay) {
+        if (change === 0) return qsTr("steady")
+        var n = Math.round(Math.abs(change) * 10) / 10
+        var u = unit === "set" ? qsTr("reps") : page.unitText(unit)
+        var since = Qt.formatDate(Storage.dateFromDayKey(firstDay), "MMM")
+        return (change > 0 ? qsTr("+%1 %2 since %3") : qsTr("−%1 %2 since %3")).arg(n).arg(u).arg(since)
+    }
 
     function reload() {
         kindList = Storage.kinds({ nature: "practise" })
@@ -35,6 +73,7 @@ Page {
         if (!still) kindId = kindList.length > 0 ? kindList[0].id : -1
         Storage.loadThings(thingModel, kindId)
         programList = Storage.programs()
+        week = Storage.workoutWeek()
     }
 
     function dayLabel(key) {
@@ -81,6 +120,66 @@ Page {
                 subtitle: thingModel.count === 1 ? qsTr("1 exercise") : qsTr("%1 exercises").arg(thingModel.count)
             }
 
+            // The week first: one sentence, and the habit list's own dots for
+            // the seven days, filled where there was a workout.
+            Label {
+                x: Theme.horizontalPageMargin
+                width: listView.width - Theme.horizontalPageMargin * 2
+                wrapMode: Text.WordWrap
+                textFormat: Text.StyledText
+                font.pixelSize: Theme.fontSizeMedium
+                font.family: FiatMosTheme.serif
+                color: FiatMosTheme.primaryText
+                text: page.weekSentence()
+            }
+
+            Row {
+                x: Theme.horizontalPageMargin
+                width: listView.width - Theme.horizontalPageMargin * 2
+                readonly property real cell: width / 7
+
+                Repeater {
+                    model: 7
+                    Column {
+                        width: parent.cell
+                        spacing: Theme.paddingSmall / 2
+                        readonly property bool on: page.week.days[index] === true
+                        readonly property bool future: index > page.week.todayIndex
+
+                        Rectangle {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            width: Theme.itemSizeSmall * 0.45
+                            height: width
+                            radius: width / 2
+                            color: parent.on ? FiatMosTheme.accent : "transparent"
+                            border.width: 1
+                            border.color: parent.on ? FiatMosTheme.accent
+                                        : (parent.future ? FiatMosTheme.dotIdle : FiatMosTheme.pillBorder)
+                            Label {
+                                anchors.centerIn: parent
+                                visible: parent.parent.on
+                                text: "✓"
+                                color: FiatMosTheme.markOn(FiatMosTheme.accent)
+                                font.pixelSize: Theme.fontSizeExtraSmall
+                            }
+                        }
+                        Label {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            // Monday first, in the phone's own language.
+                            text: Qt.locale().dayName((index + 1) % 7, Locale.NarrowFormat)
+                            font.pixelSize: Theme.fontSizeTiny
+                            color: index === page.week.todayIndex ? FiatMosTheme.accent : FiatMosTheme.secondaryText
+                        }
+                    }
+                }
+            }
+
+            SectionLabel {
+                x: Theme.horizontalPageMargin
+                visible: thingModel.count > 0
+                text: qsTr("Exercises")
+            }
+
             Flow {
                 x: Theme.horizontalPageMargin
                 width: listView.width - Theme.horizontalPageMargin * 2
@@ -114,7 +213,7 @@ Page {
         delegate: ListItem {
             id: thingRow
             width: listView.width
-            contentHeight: Math.max(Theme.itemSizeMedium, thingCol.height + Theme.paddingMedium * 2)
+            contentHeight: Math.max(Theme.itemSizeMedium, rowBody.height + Theme.paddingMedium * 2)
             highlightedColor: FiatMosTheme.highlightWash
 
             menu: ContextMenu {
@@ -137,36 +236,80 @@ Page {
 
             onClicked: pageStack.animatorPush(Qt.resolvedUrl("ThingPage.qml"), { itemId: model.itemId })
 
-            Column {
-                id: thingCol
+            // Three parts: the name and last time, a little line through the
+            // recent days, and where it stands now. The line has the same
+            // width on every row, so a long name wraps instead.
+            Item {
+                id: rowBody
                 anchors.verticalCenter: parent.verticalCenter
                 x: Theme.horizontalPageMargin
                 width: parent.width - Theme.horizontalPageMargin * 2
+                height: Math.max(thingCol.height, valueCol.height)
 
-                Label {
-                    width: parent.width
-                    text: model.title
-                    truncationMode: TruncationMode.Fade
-                    color: thingRow.highlighted ? FiatMosTheme.accent : FiatMosTheme.primaryText
+                Column {
+                    id: thingCol
+                    anchors.left: parent.left
+                    anchors.right: spark.left
+                    anchors.rightMargin: Theme.paddingMedium
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Label {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        text: model.title
+                        color: thingRow.highlighted ? FiatMosTheme.accent : FiatMosTheme.primaryText
+                    }
+
+                    Label {
+                        width: parent.width
+                        font.pixelSize: Theme.fontSizeExtraSmall
+                        color: FiatMosTheme.secondaryText
+                        truncationMode: TruncationMode.Fade
+                        text: model.lastDay === ""
+                            ? qsTr("not done yet · %1").arg(Measures.label(model.measure))
+                            : page.dayLabel(model.lastDay) + (model.lastSummary !== "" ? " · " + model.lastSummary : "")
+                    }
                 }
 
-                Label {
-                    width: parent.width
-                    font.pixelSize: Theme.fontSizeExtraSmall
-                    color: FiatMosTheme.secondaryText
-                    truncationMode: TruncationMode.Fade
-                    text: model.lastDay === ""
-                        ? qsTr("not done yet · %1").arg(Measures.label(model.measure))
-                        : page.dayLabel(model.lastDay) + (model.lastSummary !== "" ? " · " + model.lastSummary : "")
+                Sparkline {
+                    id: spark
+                    anchors.right: valueCol.left
+                    anchors.rightMargin: Theme.paddingMedium
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: model.count > 1
+                    values: JSON.parse(model.spark)
                 }
 
-                Label {
-                    width: parent.width
-                    visible: model.tagList !== ""
-                    font.pixelSize: Theme.fontSizeTiny
-                    color: FiatMosTheme.accent
-                    truncationMode: TruncationMode.Fade
-                    text: model.tagList
+                Column {
+                    id: valueCol
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Theme.itemSizeMedium
+                    visible: model.count > 0
+
+                    Row {
+                        anchors.right: parent.right
+                        spacing: Theme.paddingSmall / 2
+                        Label {
+                            id: bigValue
+                            text: page.valueText(model.value, model.unit)
+                            font.pixelSize: Theme.fontSizeLarge
+                            font.family: FiatMosTheme.serif
+                            color: FiatMosTheme.primaryText
+                        }
+                        Label {
+                            anchors.baseline: bigValue.baseline
+                            text: page.unitText(model.unit)
+                            font.pixelSize: Theme.fontSizeTiny
+                            color: FiatMosTheme.secondaryText
+                        }
+                    }
+                    Label {
+                        anchors.right: parent.right
+                        text: page.changeText(model.change, model.unit, model.firstDay)
+                        font.pixelSize: Theme.fontSizeTiny
+                        color: model.change > 0 ? FiatMosTheme.accent : FiatMosTheme.secondaryText
+                    }
                 }
             }
         }
