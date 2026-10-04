@@ -3,8 +3,14 @@ import Sailfish.Silica 1.0
 import ".."
 import "../components"
 import "../Storage.js" as Storage
+import "../Measures.js" as Measures
 
-// Picks what a habit — or an item — works through.
+// Picks what a habit — or an item — works through, or practises.
+//
+// `nature` says which: "finish" lists the shelf's kinds (book, roll of film),
+// "practise" the kinds of things that keep coming back (exercises, pieces).
+// The two never mix on this page, so a habit that finishes things can never
+// be pointed at a kind of things you practise.
 //
 // This used to be a row of pills on the page above. A pill row is right for
 // four fixed values and wrong for a list that grows every time the user
@@ -25,8 +31,17 @@ Page {
     signal kindPicked(int kindId)
 
     property int currentKindId: -1
+    property string nature: "finish"
+    readonly property bool practising: page.nature === "practise"
     property string term: ""
     property bool inventing: false
+    // For a new practise kind: how its things start out being measured.
+    property string newMeasure: "weight_reps"
+
+    function detailOf(unit, measure) {
+        if (page.practising) return qsTr("each starts as %1").arg(Measures.label(measure))
+        return unit === "" ? qsTr("no unit") : qsTr("measured in %1").arg(unit)
+    }
 
     ListModel { id: kindModel }
 
@@ -38,23 +53,25 @@ Page {
         kindModel.clear()
         var anyShown = 0
 
-        var mine = Storage.kinds()
+        var mine = Storage.kinds({ nature: page.nature })
         for (var i = 0; i < mine.length; i++) {
             if (!matches(mine[i].name)) continue
             kindModel.append({ kindId: mine[i].id,
                                name: mine[i].name,
                                unit: mine[i].unit,
+                               measure: mine[i].measure,
                                section: "yours" })
             anyShown++
         }
 
-        var starters = Storage.starterKinds()
+        var starters = Storage.starterKinds(page.nature)
         for (var j = 0; j < starters.length; j++) {
             if (!matches(starters[j].name)) continue
             // id -1 means "not a row yet". It becomes one when picked.
             kindModel.append({ kindId: -1,
                                name: starters[j].name,
                                unit: starters[j].unit,
+                               measure: starters[j].measure === undefined ? "weight_reps" : starters[j].measure,
                                section: "common" })
             anyShown++
         }
@@ -67,9 +84,9 @@ Page {
         }
     }
 
-    function choose(kindId, name, unit) {
+    function choose(kindId, name, unit, measure) {
         var id = kindId
-        if (id < 0) id = Storage.addKind(name, unit)
+        if (id < 0) id = Storage.addKind(name, unit, page.nature, measure)
         if (id < 0) return
         page.kindPicked(id)
         pageStack.pop()
@@ -100,7 +117,7 @@ Page {
 
             PageHead {
                 title: qsTr("Kind")
-                subtitle: qsTr("what it works through")
+                subtitle: page.practising ? qsTr("things you practise") : qsTr("things you finish")
             }
 
             TextField {
@@ -138,7 +155,7 @@ Page {
             width: listView.width
             height: Theme.itemSizeSmall
             highlightedColor: FiatMosTheme.highlightWash
-            onClicked: page.choose(model.kindId, model.name, model.unit)
+            onClicked: page.choose(model.kindId, model.name, model.unit, model.measure)
 
             readonly property bool current: model.kindId >= 0 && model.kindId === page.currentKindId
 
@@ -157,9 +174,7 @@ Page {
 
                 Label {
                     width: parent.width
-                    text: model.unit === ""
-                        ? qsTr("no unit")
-                        : qsTr("measured in %1").arg(model.unit)
+                    text: page.detailOf(model.unit, model.measure)
                     font.pixelSize: Theme.fontSizeExtraSmall
                     color: FiatMosTheme.secondaryText
                     truncationMode: TruncationMode.Fade
@@ -221,7 +236,8 @@ Page {
                         width: parent.width
                         font.pixelSize: Theme.fontSizeExtraSmall
                         color: FiatMosTheme.secondaryText
-                        text: qsTr("Your own kind, your own unit")
+                        text: page.practising ? qsTr("Your own kind of thing to practise")
+                                              : qsTr("Your own kind, your own unit")
                     }
                 }
             }
@@ -231,7 +247,7 @@ Page {
                 width: listView.width
                 visible: page.inventing
                 label: qsTr("What kind of thing is it?")
-                placeholderText: qsTr("sketch, letter, lecture…")
+                placeholderText: page.practising ? qsTr("katas, scales, poses…") : qsTr("sketch, letter, lecture…")
                 color: FiatMosTheme.primaryText
                 EnterKey.iconSource: "image://theme/icon-m-enter-next"
                 EnterKey.onClicked: newUnit.focus = true
@@ -240,7 +256,7 @@ Page {
             TextField {
                 id: newUnit
                 width: listView.width
-                visible: page.inventing
+                visible: page.inventing && !page.practising
                 label: qsTr("Measured in")
                 placeholderText: qsTr("pages, minutes, frames…")
                 color: FiatMosTheme.primaryText
@@ -251,27 +267,44 @@ Page {
             Label {
                 x: Theme.horizontalPageMargin
                 width: listView.width - Theme.horizontalPageMargin * 2
-                visible: page.inventing
+                visible: page.inventing && !page.practising
                 wrapMode: Text.WordWrap
                 font.pixelSize: Theme.fontSizeExtraSmall
                 color: FiatMosTheme.secondaryText
                 text: qsTr("Set once, now. The unit is never changed afterwards — that would reinterpret every number already logged against it.")
             }
 
+            // A thing you practise has no unit: each thing is measured its
+            // own way. This is only how a new one starts, and can be changed
+            // on any of them later.
+            SectionLabel {
+                x: Theme.horizontalPageMargin
+                visible: page.inventing && page.practising
+                text: qsTr("Each new one is measured in")
+            }
+
             Flow {
                 x: Theme.horizontalPageMargin
                 width: listView.width - Theme.horizontalPageMargin * 2
                 spacing: Theme.paddingSmall
-                visible: page.inventing
+                visible: page.inventing && page.practising
 
-                Pill {
-                    text: qsTr("Use this kind")
-                    selected: newName.text.trim() !== "" && newUnit.text.trim() !== ""
-                    onClicked: {
-                        if (newName.text.trim() === "" || newUnit.text.trim() === "") return
-                        page.choose(-1, newName.text.trim(), newUnit.text.trim())
+                Repeater {
+                    model: Measures.choices()
+                    Pill {
+                        text: modelData.label
+                        selected: page.newMeasure === modelData.value
+                        onClicked: page.newMeasure = modelData.value
                     }
                 }
+            }
+
+            ActionWord {
+                x: Theme.horizontalPageMargin - Theme.paddingMedium
+                visible: page.inventing
+                text: qsTr("use this kind")
+                enabled: newName.text.trim() !== "" && (page.practising || newUnit.text.trim() !== "")
+                onClicked: page.choose(-1, newName.text.trim(), page.practising ? "" : newUnit.text.trim(), page.newMeasure)
             }
 
             Item { width: 1; height: Theme.paddingLarge }

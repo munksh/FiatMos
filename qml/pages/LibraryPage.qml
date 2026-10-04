@@ -4,9 +4,11 @@ import ".."
 import "../components"
 import "../Storage.js" as Storage
 
-// The things you work through, whatever kind of thing they are. Books,
-// repertoire, study texts, rolls of film, drafts. An item has its own
-// lifecycle, so UPDATE is the right verb here, unlike in log_entry.
+// The Shelf: the things you finish, whatever kind of thing they are. Books,
+// films, study texts, rolls of film, drafts. Things you practise -- exercises,
+// pieces -- live on the Practice page instead and never show up here. An item
+// has its own lifecycle, so UPDATE is the right verb here, unlike in
+// log_entry. (The file keeps its old name so the .pro does not churn.)
 
 Page {
     id: page
@@ -18,7 +20,7 @@ Page {
     property var kindList: []
 
     function filter() {
-        var f = { includePrivate: true, tag: page.tagFilter, kindId: page.kindFilter }
+        var f = { includePrivate: true, tag: page.tagFilter, kindId: page.kindFilter, nature: "finish" }
         if (filterIndex === 0) f.active = true
         else if (filterIndex === 1) f.active = false
         return f
@@ -26,7 +28,7 @@ Page {
 
     function reload() {
         tags = Storage.allTags()
-        kindList = Storage.kinds()
+        kindList = Storage.kinds({ nature: "finish" })
         Storage.loadItems(itemModel, filter())
     }
 
@@ -69,7 +71,7 @@ Page {
             spacing: Theme.paddingMedium
 
             PageHead {
-                title: qsTr("Library")
+                title: qsTr("Shelf")
                 subtitle: itemModel.count === 1
                           ? qsTr("1 item")
                           : qsTr("%1 items").arg(itemModel.count)
@@ -122,26 +124,21 @@ Page {
                 }
             }
 
-            // Tag filter, built from the tags actually in use. Never a fixed
-            // list -- the whole point is that you invent them as you go.
-            Flow {
-                x: Theme.horizontalPageMargin
-                width: listView.width - Theme.horizontalPageMargin * 2
-                spacing: Theme.paddingSmall
+            // Tag filter. Tags are invented as you go and soon outnumber what
+            // a row of words can hold, so the choice is a row of its own that
+            // opens a list.
+            ValueRow {
+                width: listView.width
                 visible: page.tags.length > 0
-
-                Pill {
-                    text: qsTr("Any tag")
-                    selected: page.tagFilter === ""
-                    onClicked: page.tagFilter = ""
-                }
-
-                Repeater {
-                    model: page.tags.length
-                    Pill {
-                        text: page.tags[index]
-                        selected: page.tagFilter === page.tags[index]
-                        onClicked: page.tagFilter = page.tags[index]
+                label: qsTr("Tag")
+                value: page.tagFilter === "" ? qsTr("any") : page.tagFilter
+                onClicked: {
+                    var op = pageStack.animatorPush(Qt.resolvedUrl("TagPickerPage.qml"), { current: page.tagFilter })
+                    if (op === null || op === undefined) return
+                    if (op.pageCompleted !== undefined) {
+                        op.pageCompleted.connect(function(p) { p.tagPicked.connect(function(t) { page.tagFilter = t }) })
+                    } else if (op.tagPicked !== undefined) {
+                        op.tagPicked.connect(function(t) { page.tagFilter = t })
                     }
                 }
             }

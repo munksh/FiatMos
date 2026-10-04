@@ -68,7 +68,7 @@ Dialog {
     // operation already IS the page.
     function pickKind() {
         var op = pageStack.animatorPush(Qt.resolvedUrl("KindPage.qml"),
-                                        { currentKindId: page.kindId })
+                                        { currentKindId: page.kindId, nature: "finish" })
         if (op === null || op === undefined) return
         if (op.pageCompleted !== undefined) {
             op.pageCompleted.connect(function(p) { p.kindPicked.connect(page.applyKind) })
@@ -229,14 +229,16 @@ Dialog {
                     EnterKey.onClicked: page.lookUp()
                 }
 
-                Pill {
+                // A word in the accent, like Save in the header: it acts
+                // once. Faded until there is an ISBN to act on.
+                ActionWord {
                     id: lookupPill
                     anchors.right: parent.right
-                    anchors.rightMargin: Theme.horizontalPageMargin
+                    anchors.rightMargin: Theme.horizontalPageMargin - Theme.paddingMedium
                     anchors.top: parent.top
                     anchors.topMargin: Theme.paddingMedium
-                    text: page.lookupState === "busy" ? qsTr("Looking…") : qsTr("Look up")
-                    selected: page.isbn !== ""
+                    text: page.lookupState === "busy" ? qsTr("looking…") : qsTr("look up")
+                    opacity: page.isbn !== "" ? 1.0 : 0.35
                     onClicked: if (page.lookupState !== "busy") page.lookUp()
                 }
             }
@@ -297,16 +299,12 @@ Dialog {
                 }
             }
 
-            Flow {
-                x: Theme.horizontalPageMargin
-                width: parent.width - Theme.horizontalPageMargin * 2
-
-                Pill {
-                    text: LookupSettings.chosen
-                        ? qsTr("Lookup services \u00B7 %1 on").arg(LookupSettings.enabledCount)
-                        : qsTr("Choose lookup services")
-                    onClicked: page.openServices(false)
-                }
+            ValueRow {
+                width: parent.width
+                label: qsTr("Lookup services")
+                value: LookupSettings.chosen ? qsTr("%1 on").arg(LookupSettings.enabledCount) : ""
+                placeholder: qsTr("not chosen yet")
+                onClicked: page.openServices(false)
             }
 
             TextField {
@@ -388,7 +386,10 @@ Dialog {
 
                 Repeater {
                     model: page.knownTags.length
+                    // Several can be on, so no bar under them -- bold and in
+                    // the accent says "in the field", nothing more.
                     Pill {
+                        multi: true
                         text: page.knownTags[index]
                         selected: tagsField.text.indexOf(page.knownTags[index]) >= 0
                         onClicked: page.addTag(page.knownTags[index])
@@ -407,16 +408,10 @@ Dialog {
 
             // -- Private --------------------------------------------------------
 
-            Flow {
-                x: Theme.horizontalPageMargin
-                width: parent.width - Theme.horizontalPageMargin * 2
-                spacing: Theme.paddingSmall
-
-                Pill {
-                    text: qsTr("Keep private")
-                    selected: page.isPrivate
-                    onClicked: page.isPrivate = !page.isPrivate
-                }
+            SwitchRow {
+                text: qsTr("Keep private")
+                checked: page.isPrivate
+                onClicked: page.isPrivate = !page.isPrivate
             }
 
             Label {
@@ -425,7 +420,7 @@ Dialog {
                 wrapMode: Text.WordWrap
                 font.pixelSize: Theme.fontSizeExtraSmall
                 color: FiatMosTheme.secondaryText
-                text: qsTr("A private item stays in your library and keeps logging normally, but is left out of Totals unless you ask for it. Nothing is hidden from you, only from anything you might share.")
+                text: qsTr("A private item stays on your shelf and keeps logging normally, but is left out of Totals unless you ask for it. Nothing is hidden from you, only from anything you might share.")
             }
         }
 

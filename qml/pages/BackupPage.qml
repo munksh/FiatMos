@@ -175,19 +175,15 @@ Page {
                 wrapMode: Text.WordWrap
                 font.pixelSize: Theme.fontSizeExtraSmall
                 color: FiatMosTheme.secondaryText
-                text: qsTr("Writes everything — habits, entries, library, sessions — to one file in your Documents folder. Nothing leaves the phone unless you send it yourself.")
+                text: qsTr("Writes everything — habits, entries, your shelf, practice and sessions — to one file in your Documents folder. Nothing leaves the phone unless you send it yourself.")
             }
 
-            Flow {
-                x: Theme.horizontalPageMargin
-                width: parent.width - Theme.horizontalPageMargin * 2
-                spacing: Theme.paddingSmall
-
-                Pill {
-                    text: qsTr("Export now")
-                    selected: true
-                    onClicked: page.doExport()
-                }
+            // The one page in Mos with buttons. Exporting and replacing are
+            // deliberate acts, and they get the family's button for it.
+            FiatButton {
+                width: parent.width
+                text: qsTr("Export now")
+                onClicked: page.doExport()
             }
 
             // Directly under the button that caused it. Not at the bottom of
@@ -228,16 +224,12 @@ Page {
                 text: qsTr("Import replaces everything on this phone with the contents of the file. It does not merge. Export first if there is anything here worth keeping — that export is the only undo there is.")
             }
 
-            Flow {
-                x: Theme.horizontalPageMargin
-                width: parent.width - Theme.horizontalPageMargin * 2
-                spacing: Theme.paddingSmall
+            FiatButton {
+                width: parent.width
                 visible: page.pending === null
-
-                Pill {
-                    text: qsTr("Choose a file…")
-                    onClicked: page.pickFile()
-                }
+                filled: false
+                text: qsTr("Choose a file…")
+                onClicked: page.pickFile()
             }
 
             // What the file says it holds. Shown before anything is touched,
@@ -265,7 +257,7 @@ Page {
                         font.family: FiatMosTheme.serif
                         color: FiatMosTheme.primaryText
                         text: page.pendingInfo === null ? "" :
-                            qsTr("%1 habits, %2 entries, %3 library items.")
+                            qsTr("%1 habits, %2 entries, %3 things.")
                                 .arg(page.pendingInfo.habits)
                                 .arg(page.pendingInfo.entries)
                                 .arg(page.pendingInfo.items)
@@ -288,22 +280,22 @@ Page {
                         text: qsTr("Everything currently on this phone will be removed.")
                     }
 
-                    Flow {
-                        width: parent.width
-                        spacing: Theme.paddingSmall
+                    // Wider than the column by the page margin on each side,
+                    // so the button's own margins land on the card's edge.
+                    FiatButton {
+                        x: -Theme.horizontalPageMargin
+                        width: parent.width + Theme.horizontalPageMargin * 2
+                        text: qsTr("Replace everything")
+                        onClicked: importRemorse.execute(
+                            qsTr("Replacing everything"),
+                            function() { page.commitImport() })
+                    }
 
-                        Pill {
-                            text: qsTr("Cancel")
-                            onClicked: { page.pending = null; page.pendingInfo = null }
-                        }
-                        Pill {
-                            text: qsTr("Replace everything")
-                            selected: true
-                            onClicked: importRemorse.execute(
-                                qsTr("Replacing everything"),
-                                function() { page.commitImport() })
-
-                        }
+                    ActionWord {
+                        quiet: true
+                        x: -Theme.paddingMedium
+                        text: qsTr("cancel")
+                        onClicked: { page.pending = null; page.pendingInfo = null }
                     }
                 }
             }

@@ -222,7 +222,7 @@ Page {
                     if (page.fetchState === "failed")
                         return qsTr("No cover found for this ISBN, or the phone is offline.") + (runner.askedText === "" ? "" : " " + runner.askedText)
                     if (page.fetchState === "none")
-                        return qsTr("All lookup services are switched off. Switch one on under About, or in the Library menu.")
+                        return qsTr("All lookup services are switched off. Switch one on under About, or in the Shelf menu.")
                     if (page.st !== null && page.st.fraction === null)
                         return qsTr("Add its length with Edit to see how far in you are.")
                     return ""

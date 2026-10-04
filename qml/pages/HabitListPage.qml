@@ -350,20 +350,12 @@ Page {
             }
 
             // Grouping is off by default and stays where you left it.
-            Item {
+            SwitchRow {
                 width: parent.width
-                height: groupPill.height + Theme.paddingLarge
                 visible: habitModel.count > 0
-
-                Pill {
-                    id: groupPill
-                    anchors.left: parent.left
-                    anchors.leftMargin: Theme.horizontalPageMargin
-                    anchors.top: parent.top
-                    text: qsTr("Group by time of day")
-                    selected: page.grouped
-                    onClicked: groupConfig.value = !page.grouped
-                }
+                text: qsTr("Group by time of day")
+                checked: page.grouped
+                onClicked: groupConfig.value = !page.grouped
             }
         }
 

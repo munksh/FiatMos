@@ -137,16 +137,16 @@ Page {
                         onClicked: page.lookback = Number(modelData.value)
                     }
                 }
+            }
 
-                Pill {
-                    visible: {
-                        var _g = page.gen
-                        return page.includePrivate || (page.st !== null && page.st.hiddenPrivate > 0)
-                    }
-                    text: qsTr("Include private")
-                    selected: page.includePrivate
-                    onClicked: page.includePrivate = !page.includePrivate
+            SwitchRow {
+                visible: {
+                    var _g = page.gen
+                    return page.includePrivate || (page.st !== null && page.st.hiddenPrivate > 0)
                 }
+                text: qsTr("Include private")
+                checked: page.includePrivate
+                onClicked: page.includePrivate = !page.includePrivate
             }
 
             // -- The shelf ------------------------------------------------------

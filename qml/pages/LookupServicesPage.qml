@@ -105,65 +105,20 @@ Dialog {
                 text: qsTr("Looking a book up sends its ISBN to each service you switch on, together with your phone's IP address, which any website you visit sees too. Nothing else leaves the phone: no habits, no other books, no history. A service that is off is never contacted, and its covers are never downloaded.")
             }
 
+            // One row per service, and the row is the switch: the dot says on
+            // or off, the name and what it is sent sit beside it.
             Repeater {
                 model: Lookup.SERVICES.length
 
-                Item {
+                SwitchRow {
                     id: row
-
                     readonly property string serviceId: Lookup.SERVICES[index].id
-                    readonly property bool on: page.choice[row.serviceId] === true
-
                     width: content.width
-                    height: rowText.height + Theme.paddingLarge * 2
-
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: page.toggle(row.serviceId)
-                    }
-
-                    Column {
-                        id: rowText
-                        x: Theme.horizontalPageMargin
-                        y: Theme.paddingLarge
-                        width: parent.width - Theme.horizontalPageMargin * 2 - switchPill.width - Theme.paddingLarge
-                        spacing: Theme.paddingSmall
-
-                        Label {
-                            width: parent.width
-                            wrapMode: Text.WordWrap
-                            font.pixelSize: Theme.fontSizeMedium
-                            font.family: FiatMosTheme.serif
-                            color: FiatMosTheme.primaryText
-                            text: page.fullName(row.serviceId)
-                        }
-                        Label {
-                            width: parent.width
-                            wrapMode: Text.WordWrap
-                            font.pixelSize: Theme.fontSizeExtraSmall
-                            color: FiatMosTheme.secondaryText
-                            text: page.blurb(row.serviceId)
-                        }
-                    }
-
-                    Pill {
-                        id: switchPill
-                        anchors.right: parent.right
-                        anchors.rightMargin: Theme.horizontalPageMargin
-                        anchors.top: parent.top
-                        anchors.topMargin: Theme.paddingLarge
-                        text: row.on ? qsTr("On") : qsTr("Off")
-                        selected: row.on
-                        onClicked: page.toggle(row.serviceId)
-                    }
-
-                    Rectangle {
-                        x: Theme.horizontalPageMargin
-                        width: parent.width - Theme.horizontalPageMargin * 2
-                        height: 1
-                        anchors.bottom: parent.bottom
-                        color: FiatMosTheme.innerBorder
-                    }
+                    serifText: true
+                    text: page.fullName(row.serviceId)
+                    description: page.blurb(row.serviceId)
+                    checked: page.choice[row.serviceId] === true
+                    onClicked: page.toggle(row.serviceId)
                 }
             }
 

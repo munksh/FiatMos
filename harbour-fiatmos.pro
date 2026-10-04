@@ -40,20 +40,24 @@ DISTFILES += \
     qml/harbour-fiatmos.qml \
     qml/Storage.js \
     qml/Lookup.js \
+    qml/Measures.js \
     qml/LookupSettings.qml \
     qml/FiatMosTheme.qml \
     qml/qmldir \
     qml/components/Almanac.qml \
+    qml/components/ActionWord.qml \
     qml/components/BookCover.qml \
     qml/components/DialogHead.qml \
     qml/components/LookupRunner.qml \
     qml/components/EmptyNote.qml \
+    qml/components/FiatButton.qml \
     qml/components/MunkstolenMark.qml \
     qml/components/PageHead.qml \
     qml/components/Pill.qml \
     qml/components/ProgressRing.qml \
     qml/components/SectionLabel.qml \
     qml/components/Shelf.qml \
+    qml/components/SwitchRow.qml \
     qml/components/ValueRow.qml \
     qml/cover/CoverPage.qml \
     qml/pages/images/family/harbour-fiatagenda.png \
@@ -65,6 +69,8 @@ DISTFILES += \
     qml/pages/images/family/harbour-fiatcor.png \
     qml/pages/images/family/harbour-fiatpassus.png \
     qml/pages/images/family/harbour-fiatmos.png \
+    qml/pages/images/family/harbour-fiatimago.png \
+    qml/pages/images/family/harbour-fiatratio.png \
     qml/pages/HabitListPage.qml \
     qml/pages/AddHabitPage.qml \
     qml/pages/LogPage.qml \
@@ -79,6 +85,7 @@ DISTFILES += \
     qml/pages/KindStatsPage.qml \
     qml/pages/LookupServicesPage.qml \
     qml/pages/ItemPage.qml \
+    qml/pages/TagPickerPage.qml \
     rpm/harbour-fiatmos.spec
 
 SAILFISHAPP_ICONS = 86x86 108x108 128x128 172x172

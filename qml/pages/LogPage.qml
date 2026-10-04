@@ -134,7 +134,7 @@ Page {
                     var _g = page.gen
                     return page.habit !== null && page.habit.valueType === "reference"
                 }
-                text: qsTr("Library")
+                text: qsTr("Shelf")
                 onClicked: pageStack.animatorPush(Qt.resolvedUrl("LibraryPage.qml"))
             }
             MenuItem {
@@ -249,7 +249,7 @@ Page {
                     wrapMode: Text.WordWrap
                     font.pixelSize: Theme.fontSizeExtraSmall
                     color: FiatMosTheme.secondaryText
-                    text: qsTr("Nothing on the go. Add something from Library in the pull-down menu.")
+                    text: qsTr("Nothing on the go. Add something from the Shelf in the pull-down menu.")
                 }
             }
 

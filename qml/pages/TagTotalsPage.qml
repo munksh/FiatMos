@@ -94,42 +94,33 @@ Page {
                     selected: page.lookback === 0
                     onClicked: page.lookback = 0
                 }
-                Pill {
-                    text: qsTr("Include private")
-                    selected: page.includePrivate
-                    onClicked: page.includePrivate = !page.includePrivate
-                }
+            }
+
+            SwitchRow {
+                text: qsTr("Include private")
+                checked: page.includePrivate
+                onClicked: page.includePrivate = !page.includePrivate
             }
 
             // -- Tag filter ------------------------------------------------------
             //
-            // "All" first, and selected by default. A filter whose neutral
-            // position is missing is not a filter, it is a requirement.
+            // "Any" by default. A filter whose neutral position is missing is
+            // not a filter, it is a requirement. A row that opens a list,
+            // because tags are invented as you go and soon outnumber a row of
+            // words.
 
-            SectionLabel {
-                x: Theme.horizontalPageMargin
+            ValueRow {
+                width: parent.width
                 visible: page.tags.length > 0
-                text: qsTr("Tag")
-            }
-
-            Flow {
-                x: Theme.horizontalPageMargin
-                width: parent.width - Theme.horizontalPageMargin * 2
-                spacing: Theme.paddingSmall
-                visible: page.tags.length > 0
-
-                Pill {
-                    text: qsTr("All")
-                    selected: page.tag === ""
-                    onClicked: page.tag = ""
-                }
-
-                Repeater {
-                    model: page.tags.length
-                    Pill {
-                        text: page.tags[index]
-                        selected: page.tag === page.tags[index]
-                        onClicked: page.tag = page.tags[index]
+                label: qsTr("Tag")
+                value: page.tag === "" ? qsTr("any") : page.tag
+                onClicked: {
+                    var op = pageStack.animatorPush(Qt.resolvedUrl("TagPickerPage.qml"), { current: page.tag })
+                    if (op === null || op === undefined) return
+                    if (op.pageCompleted !== undefined) {
+                        op.pageCompleted.connect(function(p) { p.tagPicked.connect(function(t) { page.tag = t }) })
+                    } else if (op.tagPicked !== undefined) {
+                        op.tagPicked.connect(function(t) { page.tag = t })
                     }
                 }
             }
