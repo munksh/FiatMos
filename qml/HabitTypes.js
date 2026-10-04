@@ -25,15 +25,16 @@ function list() {
           examples: qsTr("Sleep, mood, pain."),
           gets: [qsTr("A value on a scale you choose, and how it moves over the weeks.")] },
         { key: "reference", title: qsTr("Finish it"),
-          examples: qsTr("Books, audiobooks, films, rolls of film."),
-          gets: [qsTr("Each thing lives on your Shelf until it is finished."),
+          examples: qsTr("Books, films, rolls of film, pieces to learn."),
+          gets: [qsTr("Each thing lives on your Shelf until it is finished — or learned, for a piece or a text."),
                  qsTr("Books can be looked up by ISBN, with a cover."),
                  qsTr("Counts what you finish: books this year, rolls this month.")] },
-        { key: "structured", title: qsTr("Practise it"),
-          examples: qsTr("Gym, rehab, an instrument, a text by heart."),
-          gets: [qsTr("A session of several things, each with its sets, minutes or distance."),
+        // "Work out", not "Work it out": that one means solving a problem.
+        { key: "structured", title: qsTr("Work out"),
+          examples: qsTr("Gym, rehab, stretching, climbing."),
+          gets: [qsTr("A session of exercises, each with its sets, minutes or distance."),
                  qsTr("Last time is shown beside today, so you know what to aim for."),
-                 qsTr("Each thing keeps its own history under Practice: heavier, longer, steadier."),
+                 qsTr("Each exercise keeps its own history under Workouts: heavier, longer, steadier."),
                  qsTr("Save a session as a program and start from it next time.")] }
     ]
 }

@@ -414,7 +414,7 @@ Dialog {
             ValueRow {
                 width: parent.width
                 visible: page.usesKind
-                label: page.valueType === "structured" ? qsTr("Practises") : qsTr("Works through")
+                label: page.valueType === "structured" ? qsTr("Kind of exercise") : qsTr("Works through")
                 placeholder: qsTr("Choose a kind…")
                 // A practising habit's things belong to its kind, and their
                 // history with them. Moving the habit to another kind would
@@ -435,7 +435,7 @@ Dialog {
                 placeholderText: {
                     if (page.valueType === "reference" && page.kindName !== "")
                         return qsTr("Work through %1").arg(page.kindName)
-                    if (page.valueType === "structured") return qsTr("Gym, rehab, organ…")
+                    if (page.valueType === "structured") return qsTr("Gym, rehab, stretching…")
                     return qsTr("Name")
                 }
                 color: FiatMosTheme.primaryText

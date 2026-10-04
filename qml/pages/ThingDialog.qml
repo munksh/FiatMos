@@ -76,7 +76,7 @@ Dialog {
             spacing: Theme.paddingMedium
 
             DialogHead {
-                title: page.editing ? qsTr("Edit") : qsTr("Something to practise")
+                title: page.editing ? qsTr("Edit") : qsTr("New exercise")
                 acceptEnabled: page.canAccept
                 onCancelled: page.reject()
                 onAccepted: page.accept()
@@ -86,7 +86,7 @@ Dialog {
                 id: nameField
                 width: parent.width
                 label: page.nameTaken ? qsTr("Already there under that name") : qsTr("Name")
-                placeholderText: qsTr("Bench press, Toccata, Pigeon pose…")
+                placeholderText: qsTr("Bench press, plank, pigeon pose…")
                 color: FiatMosTheme.primaryText
                 EnterKey.iconSource: "image://theme/icon-m-enter-close"
                 EnterKey.onClicked: focus = false

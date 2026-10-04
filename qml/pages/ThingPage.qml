@@ -5,13 +5,16 @@ import "../components"
 import "../Storage.js" as Storage
 import "../Measures.js" as Measures
 
-// One thing you practise, over its whole life: every day it was done, what
-// you did, and how that compares with half a year ago.
+// One exercise over its whole life.
 //
-// The line is drawn through one number per day -- the heaviest weight, or
-// the reps while there is no weight yet, the minutes, the distance -- because
-// one number is what the eye can follow across months. The days themselves,
-// set by set, are listed underneath.
+// It starts with one sentence: where you are now, and how that compares with
+// half a year ago (or the first time, while there is no half year yet). Then
+// three numbers, a line through the days once there are enough of them to
+// make a line, and every day on a row of its own.
+//
+// The line is drawn through one number per day -- the heaviest weight, the
+// reps while there is no weight yet, the minutes, the distance -- from zero,
+// so that a few kilos read as a few kilos and not as a cliff.
 //
 // Nothing here is stored. It is all worked out from the sessions each time.
 
@@ -30,25 +33,57 @@ Page {
         lineChart.requestPaint()
     }
 
+    // "today", "yesterday", "20 Aug" -- and the year only when it is not this one.
     function dayLabel(key) {
         if (key === undefined || key === null || key === "") return ""
         if (key === Storage.dayOffsetKey(0)) return qsTr("today")
         if (key === Storage.dayOffsetKey(-1)) return qsTr("yesterday")
-        return Qt.formatDate(Storage.dateFromDayKey(key.substr(0, 10)), "ddd d MMM yyyy")
+        var d = Storage.dateFromDayKey(key.substr(0, 10))
+        return Qt.formatDate(d, d.getFullYear() === new Date().getFullYear() ? "d MMM" : "d MMM yyyy")
     }
 
-    function amount(v) {
-        var r = Math.round(v * 10) / 10
-        var u = page.st === null ? "" : page.st.unit
-        return u === "" ? String(r) : r + " " + u
+    function accent(t) {
+        return "<font color=\"" + FiatMosTheme.accent + "\">" + t + "</font>"
     }
 
-    // "+20 kg", "−3 min", "the same"
-    function change(from, to) {
-        var d = Math.round((to - from) * 10) / 10
-        if (d === 0) return qsTr("the same")
-        var u = page.st === null ? "" : page.st.unit
-        return (d > 0 ? "+" : "−") + Math.abs(d) + (u === "" ? "" : " " + u)
+    function num(v) {
+        return String(Math.round(v * 10) / 10)
+    }
+
+    // The value of a day, with what it is counted in.
+    function said(v) {
+        if (page.st === null) return ""
+        var m = page.st.measure
+        if (m === "time") return qsTr("%1 min").arg(page.num(v))
+        if (m === "time_distance") return page.st.unit === "km" ? qsTr("%1 km").arg(page.num(v)) : qsTr("%1 min").arg(page.num(v))
+        if (page.st.bodyweight) return qsTr("%1 reps").arg(page.num(v))
+        return qsTr("%1 kg").arg(page.num(v))
+    }
+
+    // "+5 kg since 20 Aug", "the same as on 20 Aug"
+    function since(then, now) {
+        var d = Math.round((now.value - then.value) * 10) / 10
+        var when = page.dayLabel(then.day)
+        if (d === 0) return qsTr("the same as on %1").arg(when)
+        var amount = page.said(Math.abs(d))
+        return (d > 0 ? qsTr("+%1 since %2") : qsTr("−%1 since %2")).arg(amount).arg(when)
+    }
+
+    function headline() {
+        var s = page.st
+        if (s === null || s.latest === null) return ""
+        // The name is the title right above; the sentence starts with the fact.
+        var lead
+        if (s.bodyweight) {
+            lead = qsTr("%1, %2 at most in a day.")
+                .arg(page.accent(qsTr("%1 in a set").arg(s.maxSet))).arg(s.maxDayReps)
+        } else {
+            lead = qsTr("%1 last time.").arg(page.accent(page.said(s.latest.value)))
+        }
+        if (s.then === null) return lead
+        // "Since" compares like with like: for bodyweight it is the most reps
+        // in a day, for everything else the line's own value.
+        return lead + " " + page.since(s.then, s.latest).charAt(0).toUpperCase() + page.since(s.then, s.latest).substr(1) + "."
     }
 
     onStatusChanged: {
@@ -112,70 +147,24 @@ Page {
                 }
             }
 
+            // The one sentence the page is for.
             Label {
                 x: Theme.horizontalPageMargin
                 width: parent.width - Theme.horizontalPageMargin * 2
                 wrapMode: Text.WordWrap
-                visible: {
-                    var _g = page.gen
-                    return page.st !== null && page.st.count === 0
-                }
-                font.pixelSize: Theme.fontSizeSmall
+                textFormat: Text.StyledText
+                font.pixelSize: Theme.fontSizeMedium
                 font.family: FiatMosTheme.serif
-                color: FiatMosTheme.secondaryText
-                text: qsTr("Not done yet. Its history starts with the first session that includes it.")
-            }
-
-            // -- Last time, and then ---------------------------------------------
-
-            Column {
-                x: Theme.horizontalPageMargin
-                width: parent.width - Theme.horizontalPageMargin * 2
-                spacing: Theme.paddingSmall
-                visible: {
+                color: FiatMosTheme.primaryText
+                text: {
                     var _g = page.gen
-                    return page.st !== null && page.st.latest !== null
-                }
-
-                SectionLabel {
-                    text: {
-                        var _g = page.gen
-                        return page.st === null || page.st.latest === null ? "" : qsTr("Last time · %1").arg(page.dayLabel(page.st.latest.day))
-                    }
-                }
-                Label {
-                    width: parent.width
-                    wrapMode: Text.WordWrap
-                    font.pixelSize: Theme.fontSizeLarge
-                    font.family: FiatMosTheme.serif
-                    color: FiatMosTheme.primaryText
-                    text: {
-                        var _g = page.gen
-                        if (page.st === null || page.st.latest === null) return ""
-                        return page.st.latest.summary === "" ? qsTr("done") : page.st.latest.summary
-                    }
-                }
-                // The comparison the page is for. Half a year back when there
-                // is that much history; the first time when there is not.
-                Label {
-                    width: parent.width
-                    wrapMode: Text.WordWrap
-                    visible: text !== ""
-                    font.pixelSize: Theme.fontSizeSmall
-                    color: FiatMosTheme.secondaryText
-                    text: {
-                        var _g = page.gen
-                        if (page.st === null || page.st.then === null || page.st.latest === null) return ""
-                        var t = page.st.then
-                        var lead = page.st.halfYear ? qsTr("Half a year ago, %1").arg(page.dayLabel(t.day))
-                                                    : qsTr("The first time, %1").arg(page.dayLabel(t.day))
-                        var what = t.summary === "" ? "" : ": " + t.summary
-                        return lead + what + ". " + qsTr("Since then: %1.").arg(page.change(t.value, page.st.latest.value))
-                    }
+                    if (page.st === null) return ""
+                    if (page.st.count === 0) return qsTr("Not done yet. Its history starts with the first session that includes it.")
+                    return page.headline()
                 }
             }
 
-            // -- Four numbers -------------------------------------------------
+            // -- Three numbers --------------------------------------------------
 
             Row {
                 x: Theme.horizontalPageMargin
@@ -188,29 +177,26 @@ Page {
                 Repeater {
                     model: {
                         var _g = page.gen
-                        if (page.st === null || page.st.count === 0) return []
-                        var m = page.st.measure
-                        var out = [
-                            { n: String(page.st.count), what: page.st.count === 1 ? qsTr("day") : qsTr("days"), accent: true },
-                            { n: page.st.best === null ? "–" : String(page.st.best.value), what: qsTr("best, %1").arg(page.st.unit), accent: false }
-                        ]
-                        var maxEst = 0, sets = 0
-                        for (var i = 0; i < page.st.days.length; i++) {
-                            if (page.st.days[i].best > maxEst) maxEst = page.st.days[i].best
-                            sets += page.st.days[i].sets
-                        }
-                        out.push({ n: String(sets), what: sets === 1 ? qsTr("set") : qsTr("sets"), accent: false })
-                        if (m === "weight_reps" && maxEst > 0) out.push({ n: String(maxEst), what: qsTr("est. max, kg"), accent: false })
-                        else if (m !== "weight_reps") {
+                        var s = page.st
+                        if (s === null || s.count === 0) return []
+                        var out = [{ n: String(s.count), what: s.count === 1 ? qsTr("day") : qsTr("days"), accent: true }]
+                        if (s.bodyweight) {
+                            out.push({ n: String(s.maxSet), what: qsTr("most in a set"), accent: false })
+                            out.push({ n: String(s.maxDayReps), what: qsTr("most in a day"), accent: false })
+                        } else if (s.measure === "weight_reps") {
+                            out.push({ n: page.num(s.best.top), what: qsTr("heaviest, kg"), accent: false })
+                            out.push({ n: String(s.sets), what: s.sets === 1 ? qsTr("set") : qsTr("sets"), accent: false })
+                        } else {
+                            out.push({ n: page.num(s.best.value), what: s.unit === "km" ? qsTr("furthest, km") : qsTr("longest, min"), accent: false })
                             var total = 0
-                            for (var j = 0; j < page.st.days.length; j++) total += (m === "time" ? page.st.days[j].minutes : page.st.days[j].km)
-                            out.push({ n: String(Math.round(total * 10) / 10), what: m === "time" ? qsTr("min in all") : qsTr("km in all"), accent: false })
+                            for (var j = 0; j < s.days.length; j++) total += (s.unit === "km" ? s.days[j].km : s.days[j].minutes)
+                            out.push({ n: page.num(total), what: s.unit === "km" ? qsTr("km in all") : qsTr("min in all"), accent: false })
                         }
                         return out
                     }
 
                     Column {
-                        width: parent.width / 4
+                        width: parent.width / 3
 
                         Label {
                             width: parent.width
@@ -230,15 +216,8 @@ Page {
             }
 
             // -- Over time ------------------------------------------------------
-
-            SectionLabel {
-                x: Theme.horizontalPageMargin
-                visible: chartBlock.visible
-                text: {
-                    var _g = page.gen
-                    return page.st === null ? "" : qsTr("Over time, %1").arg(page.st.unit)
-                }
-            }
+            //
+            // From four days on. Before that a line says less than the rows.
 
             Column {
                 id: chartBlock
@@ -247,8 +226,10 @@ Page {
                 spacing: Theme.paddingSmall
                 visible: {
                     var _g = page.gen
-                    return page.st !== null && page.st.count > 1
+                    return page.st !== null && page.st.count >= 4
                 }
+
+                Item { width: 1; height: Theme.paddingSmall }
 
                 Canvas {
                     id: lineChart
@@ -273,13 +254,9 @@ Page {
                         ctx.clearRect(0, 0, width, height)
                         if (page.st === null || page.st.days.length < 2) return
                         var d = page.st.days
-                        var lo = d[0].value, hi = d[0].value
-                        for (var i = 1; i < d.length; i++) {
-                            if (d[i].value < lo) lo = d[i].value
-                            if (d[i].value > hi) hi = d[i].value
-                        }
-                        // A flat history still gets a visible line, in the middle.
-                        if (hi === lo) { hi = hi + 1; lo = Math.max(0, lo - 1) }
+                        var hi = 0
+                        for (var i = 0; i < d.length; i++) if (d[i].value > hi) hi = d[i].value
+                        if (hi <= 0) hi = 1
                         var pad = Theme.paddingSmall * 1.5
                         // Spaced by date, not by index: three sessions in one
                         // week and then a month's gap should look like that.
@@ -287,7 +264,7 @@ Page {
                         var t1 = Storage.dateFromDayKey(d[d.length - 1].day).getTime()
                         var span = Math.max(1, t1 - t0)
                         function px(k) { return pad + (Storage.dateFromDayKey(d[k].day).getTime() - t0) / span * (width - pad * 2) }
-                        function py(v) { return height - pad - (v - lo) / (hi - lo) * (height - pad * 2) }
+                        function py(v) { return height - 1 - v / hi * (height - pad * 2) }
 
                         ctx.strokeStyle = FiatMosTheme.innerBorder
                         ctx.lineWidth = 1
@@ -312,6 +289,19 @@ Page {
                             ctx.beginPath()
                             ctx.arc(px(j), py(d[j].value), r, 0, Math.PI * 2)
                             ctx.fill()
+                        }
+                    }
+
+                    // What the top of the line is, written at the top.
+                    Label {
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.topMargin: -Theme.paddingSmall
+                        font.pixelSize: Theme.fontSizeTiny
+                        color: FiatMosTheme.secondaryText
+                        text: {
+                            var _g = page.gen
+                            return page.st === null || page.st.best === null ? "" : page.said(page.st.best.value)
                         }
                     }
                 }
@@ -342,6 +332,9 @@ Page {
             }
 
             // -- Every day ------------------------------------------------------
+            //
+            // One row a day, newest first. A long day fades at the edge rather
+            // than wrapping into a paragraph; the best one is in the accent.
 
             SectionLabel {
                 x: Theme.horizontalPageMargin
@@ -362,41 +355,27 @@ Page {
                 Item {
                     x: Theme.horizontalPageMargin
                     width: content.width - Theme.horizontalPageMargin * 2
-                    height: Math.max(dayName.height, daySummary.height) + Theme.paddingSmall
+                    height: dayName.height + Theme.paddingSmall
 
                     Label {
                         id: dayName
-                        width: parent.width * 0.4
-                        truncationMode: TruncationMode.Fade
+                        width: Theme.itemSizeExtraLarge
                         text: page.dayLabel(modelData.day)
                         font.pixelSize: Theme.fontSizeExtraSmall
                         color: FiatMosTheme.secondaryText
                     }
                     Label {
-                        id: daySummary
+                        anchors.left: dayName.right
+                        anchors.leftMargin: Theme.paddingMedium
                         anchors.right: parent.right
-                        width: parent.width * 0.6
                         horizontalAlignment: Text.AlignRight
-                        wrapMode: Text.WordWrap
+                        truncationMode: TruncationMode.Fade
                         text: modelData.summary === "" ? qsTr("done") : modelData.summary
                         font.pixelSize: Theme.fontSizeExtraSmall
                         color: page.st !== null && page.st.best !== null && modelData.day === page.st.best.day
                                ? FiatMosTheme.accent : FiatMosTheme.primaryText
                     }
                 }
-            }
-
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - Theme.horizontalPageMargin * 2
-                wrapMode: Text.WordWrap
-                visible: {
-                    var _g = page.gen
-                    return page.st !== null && page.st.measure === "weight_reps" && page.st.count > 0
-                }
-                font.pixelSize: Theme.fontSizeTiny
-                color: FiatMosTheme.secondaryText
-                text: qsTr("The best day is in the accent. The estimated max is worked out from the strongest set (weight × (1 + reps / 30)), to compare 5 × 100 with 8 × 90 — not a claim about what you could lift.")
             }
         }
 

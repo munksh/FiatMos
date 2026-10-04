@@ -391,7 +391,7 @@ Page {
                 onClicked: pageStack.animatorPush(Qt.resolvedUrl("LibraryPage.qml"))
             }
             MenuItem {
-                text: qsTr("Practice")
+                text: qsTr("Workouts")
                 visible: page.showPractice
                 color: FiatMosTheme.primaryText
                 onClicked: pageStack.animatorPush(Qt.resolvedUrl("PracticePage.qml"))

@@ -546,8 +546,8 @@ Page {
                         TextField {
                             id: nameField
                             width: parent.width
-                            label: qsTr("Exercise")
-                            placeholderText: qsTr("Exercise")
+                            label: qsTr("Name")
+                            placeholderText: qsTr("Name")
                             color: FiatMosTheme.primaryText
                             Component.onCompleted: text = page.comps[compColumn.compIndex].name
                             onTextChanged: {
@@ -577,7 +577,9 @@ Page {
                                 model: {
                                     var _g = page.gen
                                     if (page.kindId < 0 || page.renamingIndex !== compColumn.compIndex) return []
-                                    var list = Storage.thingSuggestions(page.kindId, suggestions.term, 8)
+                                    // Nothing typed: this habit's own exercises,
+                                    // last used first. Typing searches the kind.
+                                    var list = Storage.thingSuggestions(page.kindId, suggestions.term, 8, page.habitId)
                                     // Not what is already in today's session.
                                     var inUse = {}
                                     for (var i = 0; i < page.comps.length; i++) {

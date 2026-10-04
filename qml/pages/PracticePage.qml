@@ -5,7 +5,9 @@ import "../components"
 import "../Storage.js" as Storage
 import "../Measures.js" as Measures
 
-// Practice: the things you practise. Exercises, pieces, stretches, routes.
+// Workouts: the exercises of every Work out habit. Exercises, stretches,
+// routes. (Music and texts are not here: you learn a piece the way you read a
+// book, so they live on the Shelf.)
 //
 // The counterpart of the Shelf. Nothing here is ever finished; what a thing
 // has instead is a history, and each row says the last of it -- so before a
@@ -75,8 +77,8 @@ Page {
             spacing: Theme.paddingMedium
 
             PageHead {
-                title: qsTr("Practice")
-                subtitle: thingModel.count === 1 ? qsTr("1 thing") : qsTr("%1 things").arg(thingModel.count)
+                title: qsTr("Workouts")
+                subtitle: thingModel.count === 1 ? qsTr("1 exercise") : qsTr("%1 exercises").arg(thingModel.count)
             }
 
             Flow {
@@ -102,7 +104,7 @@ Page {
             highlightColor: FiatMosTheme.accent
 
             MenuItem {
-                text: qsTr("Add something to practise")
+                text: qsTr("Add an exercise")
                 color: FiatMosTheme.primaryText
                 visible: page.kindId >= 0
                 onClicked: pageStack.animatorPush(Qt.resolvedUrl("ThingDialog.qml"), { kindId: page.kindId })
@@ -243,9 +245,9 @@ Page {
     // empty -- exactly when this needs to be visible.
     EmptyNote {
         enabled: thingModel.count === 0
-        text: qsTr("Nothing to practise yet")
+        text: qsTr("No exercises yet")
         hintText: page.kindId < 0
-            ? qsTr("A Practise it habit adds its things here as you log sessions.")
-            : qsTr("Things appear here as your sessions name them. Pull down to add one now.")
+            ? qsTr("A Work out habit adds its exercises here as you log sessions.")
+            : qsTr("Exercises appear here as your sessions name them. Pull down to add one now.")
     }
 }
