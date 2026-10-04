@@ -1,6 +1,6 @@
 Name:       harbour-fiatmos
 Summary:    Habit tracker where each habit sets its own detail
-Version:    1.2
+Version:    1.3
 Release:    1
 License:    MIT
 URL:        https://github.com/munksh/FiatMos
@@ -39,14 +39,16 @@ A number with a unit. Minutes run, glasses of water, kilos lifted.
 
 A rating on a scale you invent. Sleep from 0 to 3, mood from 0 to 7.
 
-Something you work through. Books, repertoire, rolls of film, study texts.
-You keep a small library of them, and each kind of thing carries its own
-unit - so pages and minutes can never be added together into one meaningless
-number. Each kind gets its own shelf, calendar and statistics, and each item
-shows how far in you are.
+Something you finish or learn. Books, films, series, drafts, and also the
+pieces and texts you learn by heart. They live on your Shelf, each kind with
+its own unit - so pages and minutes can never be added together into one
+meaningless number. Each kind gets its own calendar and statistics, and each
+thing shows how far in you are.
 
-A whole session. Exercises, sets, reps and weights, for training and rehab.
-One session per day, saved as you go.
+A workout. Exercises with their sets, reps and weights, or minutes, or
+distance - each exercise remembers which it is. Last time is shown beside
+today, every exercise keeps its own history, and a session can be saved as a
+program. One workout per day, saved as you go.
 
 Missed something before midnight? Yesterday stays open. The next morning
 the list shows what was left, one tap from done.
@@ -84,8 +86,8 @@ and there was light.
 mos - Latin, custom, the way a thing is usually done. Its plural, mores, is
 where morals come from. A habit is a custom you keep with yourself.
 
-Third in a small family of Sailfish instruments, alongside Fiat Lux, a light
-meter for film photography, and Fiat Vox, a chromatic tuner.
+Part of the fiat family - small Sailfish OS apps that each do one thing
+plainly.
 
 Gutta cavat lapidem, non vi sed saepe cadendo. The drop hollows the stone,
 not by force but by falling often.
@@ -135,3 +137,29 @@ desktop-file-install --delete-original \
 %{_datadir}/%{name}
 %{_datadir}/applications/%{name}.desktop
 %{_datadir}/icons/hicolor/*/apps/%{name}.png
+
+%changelog
+* Sun Oct 04 2026 Caesar Prometheus Ivarsson <caesar@munkstolen.se> - 1.3-1
+- The Library is now the Shelf: things you finish (books, films, series,
+  drafts) and things you learn (repertoire, texts), which are marked learned
+  rather than finished. Music you play stays on the shelf.
+- Work out: a workout habit keeps a list of exercises, and each exercise
+  remembers its own measure - reps and weight, time, time and distance, or
+  free. Last time is shown while you log. Programs save a workout to start
+  from next time.
+- Workouts: a new page with the week at the top and every exercise as a row
+  with a little line and its current value. An exercise has its own page,
+  with its history from lowest to highest and a sentence first.
+- New habit is five plain rows: Do it, Count it, Rate it, Finish it, Work
+  out. The empty list offers the same five.
+- Logging a shelf habit no longer asks what first: pick the amount, and
+  choose a thing only if you like.
+- Choices are words and on/off are dots, in the manner of the rest of the
+  family. Tags are chosen on a page of their own.
+- Number fields open the number keyboard.
+- History starts with a sentence about the habit.
+- A workout is saved once per day, and statistics no longer count a day twice.
+- Your data is kept. Habits that were on the shelf stay on the shelf; the
+  upgrade only adds. Backups now carry exercises and their measures, and
+  backups made by earlier versions still import.
+- About links to Fiat Lux, Fiat Imago and Fiat Ratio.
