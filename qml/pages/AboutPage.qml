@@ -140,16 +140,12 @@ Page {
                 text: qsTr("Everything stays on this phone, in one file. There is no account, and nothing is measured or reported. Fiat Mos asks for two permissions. Documents, so that Backup can write an export you can carry to another phone. And Internet, for one button: Look up, when you add a book. It sends the book's ISBN, and nothing else, to the services you have switched on: Open Library, Libris, the German and French national libraries and, only if you allow it, Google Books. Each of them also sees your phone's IP address, as any website would. Nothing is sent until you press Look up, a service that is off is never contacted, and which ones are on is your choice.")
             }
 
-            Flow {
-                x: Theme.horizontalPageMargin
-                width: parent.width - Theme.horizontalPageMargin * 2
-
-                Pill {
-                    text: LookupSettings.chosen
-                        ? qsTr("Lookup services \u00B7 %1 on").arg(LookupSettings.enabledCount)
-                        : qsTr("Choose lookup services")
-                    onClicked: pageStack.animatorPush(Qt.resolvedUrl("LookupServicesPage.qml"), { firstTime: !LookupSettings.chosen })
-                }
+            ValueRow {
+                width: parent.width
+                label: qsTr("Lookup services")
+                value: LookupSettings.chosen ? qsTr("%1 on").arg(LookupSettings.enabledCount) : ""
+                placeholder: qsTr("not chosen yet")
+                onClicked: pageStack.animatorPush(Qt.resolvedUrl("LookupServicesPage.qml"), { firstTime: !LookupSettings.chosen })
             }
 
             Label {
@@ -255,39 +251,43 @@ Page {
                     { name: "fiat glossa", what: qsTr("let there be tongue — a translator"), icon: "images/family/harbour-fiatglossa.png", url: "https://openrepos.net/content/munkstolen/fiat-glossa-a-deepl-translator" },
                     { name: "fiat vox", what: qsTr("let there be voice — a chromatic tuner"), icon: "images/family/harbour-fiatvox.png", url: "https://openrepos.net/content/munkstolen/fiat-vox-chromatic-tuner" },
                     { name: "fiat pons", what: qsTr("let there be bridge — a native Qobuz client"), icon: "images/family/harbour-fiatpons.png", url: "https://openrepos.net/content/munkstolen/fiat-pons-native-qobuz-client" },
-                    { name: "fiat lux", what: qsTr("let there be light — a light meter for film - Coming soon"), icon: "images/family/harbour-fiatlux.png", url: "" },
+                    { name: "fiat lux", what: qsTr("let there be light — a light meter for film"), icon: "images/family/harbour-fiatlux.png", url: "https://openrepos.net/content/munkstolen/fiat-lux-lightmeter-film-photography" },
                     { name: "fiat cor", what: qsTr("let there be heart — a metronome"), icon: "images/family/harbour-fiatcor.png", url: "https://openrepos.net/content/munkstolen/fiat-cor-a-metronome" },
                     { name: "fiat passus", what: qsTr("let there be step — a step counter - Coming soon"), icon: "images/family/harbour-fiatpassus.png", url: "" },
-                    { name: "fiat mos", what: qsTr("let there be habit — this one"), icon: "images/family/harbour-fiatmos.png", url: "" }
+                    { name: "fiat mos", what: qsTr("let there be habit — this one"), icon: "images/family/harbour-fiatmos.png", url: "" },
+                    { name: "fiat imago", what: qsTr("let there be image — a raw editor"), icon: "images/family/harbour-fiatimago.png", url: "https://openrepos.net/content/munkstolen/fiat-imago-raw-editor" },
+                    { name: "fiat ratio", what: qsTr("let there be reckoning — a budget tool"), icon: "images/family/harbour-fiatratio.png", url: "https://openrepos.net/content/munkstolen/fiat-ratio-budget-tool" }
                 ]
 
+                // Ratio's row: a full-size icon in a row of its own height,
+                // rather than an icon shrunk to the height of two lines of
+                // text. The icon is the app's face; it should be readable.
                 delegate: BackgroundItem {
-                    id: familyRow
-                    x: Theme.horizontalPageMargin
-                    width: content.width - Theme.horizontalPageMargin * 2
-                    height: familyText.height
+                    width: content.width
+                    height: Theme.itemSizeMedium
                     enabled: modelData.url !== ""
                     highlightedColor: FiatMosTheme.highlightWash
                     onClicked: Qt.openUrlExternally(modelData.url)
 
-                    readonly property real iconSlot: Theme.itemSizeSmall
-
                     Image {
-                        anchors.left: parent.left
+                        id: familyIcon
+                        x: Theme.horizontalPageMargin
                         anchors.verticalCenter: parent.verticalCenter
-                        width: Math.min(familyText.height, familyRow.iconSlot)
-                        height: width
-                        source: Qt.resolvedUrl(modelData.icon)
+                        width: Theme.itemSizeSmall
+                        height: Theme.itemSizeSmall
+                        sourceSize.width: Theme.itemSizeSmall
+                        sourceSize.height: Theme.itemSizeSmall
                         fillMode: Image.PreserveAspectFit
                         smooth: true
-                        opacity: 1.0
+                        source: Qt.resolvedUrl(modelData.icon)
                     }
 
                     Column {
-                        id: familyText
-                        anchors.left: parent.left
-                        anchors.leftMargin: familyRow.iconSlot + Theme.paddingMedium
+                        anchors.left: familyIcon.right
+                        anchors.leftMargin: Theme.paddingLarge
                         anchors.right: parent.right
+                        anchors.rightMargin: Theme.horizontalPageMargin
+                        anchors.verticalCenter: parent.verticalCenter
 
                         Label {
                             width: parent.width
