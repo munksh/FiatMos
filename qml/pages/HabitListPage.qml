@@ -4,6 +4,7 @@ import Nemo.Configuration 1.0
 import ".."
 import "../components"
 import "../Storage.js" as Storage
+import "../HabitTypes.js" as HabitTypes
 
 Page {
     id: page
@@ -12,6 +13,11 @@ Page {
 
     property int localGen: 0
     property var today: ({ completed: 0, total: 0, fraction: 0 })
+    // Whether the pull-down offers the Shelf and Practice. Each appears once
+    // there is something for it -- a habit that finishes or practises things,
+    // or things already there -- so a list of plain ticks stays a plain list.
+    property bool showShelf: false
+    property bool showPractice: false
 
     // Remembered between runs, same pattern as the Fiat colours switch.
     ConfigurationValue {
@@ -41,6 +47,8 @@ Page {
         Storage.loadHabits(habitModel, page.grouped)
         Storage.loadLeftovers(leftoverModel)
         today = Storage.dayCompletion()
+        showShelf = Storage.hasShelf()
+        showPractice = Storage.hasPractice()
         shownDay = Storage.dayKey(new Date())
         morning = new Date().getHours() < 12
         localGen++
@@ -377,9 +385,16 @@ Page {
                 onClicked: pageStack.animatorPush(Qt.resolvedUrl("BackupPage.qml"))
             }
             MenuItem {
-                text: qsTr("Library")
+                text: qsTr("Shelf")
+                visible: page.showShelf
                 color: FiatMosTheme.primaryText
                 onClicked: pageStack.animatorPush(Qt.resolvedUrl("LibraryPage.qml"))
+            }
+            MenuItem {
+                text: qsTr("Practice")
+                visible: page.showPractice
+                color: FiatMosTheme.primaryText
+                onClicked: pageStack.animatorPush(Qt.resolvedUrl("PracticePage.qml"))
             }
             MenuItem {
                 text: qsTr("New habit")
@@ -560,17 +575,102 @@ Page {
             }
         }
 
-        VerticalScrollDecorator { }
-    }
+        // With no habits yet: the motto, and the same five kinds of habit the
+        // New habit page offers, each one tap from a form with it chosen. One
+        // vocabulary from the first screen on. A footer rather than a
+        // placeholder over the list, so it sits under the ring and scrolls
+        // like everything else.
+        footer: Column {
+            width: listView.width
+            height: habitModel.count === 0 ? implicitHeight : 0
+            visible: habitModel.count === 0
+            spacing: Theme.paddingMedium
 
-    // Outside the list view on purpose: a plain child of a ListView is
-    // parented to its contentItem, which has no height when the model is
-    // empty -- exactly when this needs to be visible.
-    EmptyNote {
-        enabled: habitModel.count === 0
-        text: qsTr("No habits")
-        // The motto lives here rather than in the icon. It is a sentence,
-        // and a sentence needs room.
-        hintText: qsTr("Gutta cavat lapidem, non vi sed saepe cadendo — the drop hollows the stone, not by force but by falling often.\n\nPull down to create the first one")
+            Item { width: 1; height: Theme.paddingLarge }
+
+            Label {
+                x: Theme.horizontalPageMargin * 2
+                width: parent.width - Theme.horizontalPageMargin * 4
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
+                text: qsTr("No habits")
+                font.pixelSize: Theme.fontSizeLarge
+                font.family: FiatMosTheme.serif
+                color: FiatMosTheme.primaryText
+            }
+
+            // The motto lives here rather than in the icon. It is a
+            // sentence, and a sentence needs room.
+            Label {
+                x: Theme.horizontalPageMargin * 2
+                width: parent.width - Theme.horizontalPageMargin * 4
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
+                text: qsTr("Gutta cavat lapidem, non vi sed saepe cadendo — the drop hollows the stone, not by force but by falling often.")
+                font.pixelSize: Theme.fontSizeExtraSmall
+                color: FiatMosTheme.secondaryText
+            }
+
+            Item { width: 1; height: Theme.paddingMedium }
+
+            SectionLabel {
+                x: Theme.horizontalPageMargin
+                text: qsTr("Start with one")
+            }
+
+            Repeater {
+                model: HabitTypes.list()
+
+                Column {
+                    width: listView.width
+
+                    // The same breath as on the New habit page.
+                    Item { width: 1; height: Theme.paddingLarge; visible: index === 3 }
+
+                    BackgroundItem {
+                        id: startRow
+                        width: parent.width
+                        height: startCol.height + Theme.paddingMedium * 2
+                        highlightedColor: FiatMosTheme.highlightWash
+                        onClicked: pageStack.animatorPush(Qt.resolvedUrl("AddHabitPage.qml"), { startType: modelData.key })
+
+                        Column {
+                            id: startCol
+                            anchors.verticalCenter: parent.verticalCenter
+                            x: Theme.horizontalPageMargin
+                            width: parent.width - Theme.horizontalPageMargin * 2
+                            spacing: Theme.paddingSmall / 2
+
+                            Label {
+                                width: parent.width
+                                text: modelData.title
+                                font.pixelSize: Theme.fontSizeMedium
+                                color: startRow.highlighted ? FiatMosTheme.accent : FiatMosTheme.primaryText
+                            }
+                            Label {
+                                width: parent.width
+                                wrapMode: Text.WordWrap
+                                text: modelData.examples
+                                font.pixelSize: Theme.fontSizeExtraSmall
+                                color: FiatMosTheme.secondaryText
+                            }
+                        }
+                    }
+                }
+            }
+
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - Theme.horizontalPageMargin * 2
+                horizontalAlignment: Text.AlignHCenter
+                text: qsTr("or pull down, any time")
+                font.pixelSize: Theme.fontSizeExtraSmall
+                color: FiatMosTheme.secondaryText
+            }
+
+            Item { width: 1; height: Theme.paddingLarge }
+        }
+
+        VerticalScrollDecorator { }
     }
 }

@@ -41,6 +41,7 @@ DISTFILES += \
     qml/Storage.js \
     qml/Lookup.js \
     qml/Measures.js \
+    qml/HabitTypes.js \
     qml/LookupSettings.qml \
     qml/FiatMosTheme.qml \
     qml/qmldir \

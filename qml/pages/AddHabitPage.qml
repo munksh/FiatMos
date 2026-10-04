@@ -3,17 +3,24 @@ import Sailfish.Silica 1.0
 import ".."
 import "../components"
 import "../Storage.js" as Storage
+import "../HabitTypes.js" as HabitTypes
 
 // Creates a habit, and edits one. Pass habitId to edit; leave it at -1 to
-// create. One page, conditional fields -- the template combo decides which of
-// the blocks below is visible.
+// create. One page, and as little of it showing as the choice above needs.
 //
-// The order of the page is deliberate: WHAT KIND OF HABIT first, then the
-// things that follow from it, then the name, then the goal. Two reasons.
-// Naming a thing you have not described yet is the hardest field on the page,
-// so it comes after the description and can be prefilled from it. And the
-// goal cannot be worded properly until the unit is known -- "45" means
-// nothing, "45 pages" means something.
+// The page asks in the order people think: WHAT kind of habit, then what
+// follows from that (a unit, a scale, a kind of thing), then the name, how
+// often, and how much makes a day. Everything with a sensible default sits
+// folded away under More.
+//
+// The five kinds of habit are rows, not a menu. A menu hides four of the five
+// answers until you open it, and the examples under each row are what tell a
+// newcomer which is theirs: nobody arrives wanting "a rating", they arrive
+// wanting to sleep better. The chosen row opens to say what it brings with it
+// -- so that a reader finds out about ISBN lookups and covers on the day they
+// make a reading habit, not months later.
+//
+// The five live in HabitTypes.js, shared with the empty habit list.
 
 Dialog {
     id: page
@@ -23,6 +30,9 @@ Dialog {
     // without inheriting its history. The new habit is genuinely new -- same
     // shape, empty past.
     property int duplicateOfId: -1
+    // Set by the empty habit list, whose rows are the same five as here: the
+    // page opens with that one chosen.
+    property string startType: ""
 
     readonly property bool editing: habitId >= 0
     readonly property bool duplicating: !editing && duplicateOfId >= 0
@@ -30,7 +40,9 @@ Dialog {
 
     property string valueType: "boolean"
     property string frequency: "daily"
-    property string detailProfile: "strength"
+    // Kept only so that editing an old habit writes back what it had. New
+    // habits have no profile: a practised thing is measured per thing now.
+    property var detailProfile: null
     property string timeOfDay: ""              // "" means anytime
     property int scaleMax: 3
     property int frequencyN: 3
@@ -46,29 +58,33 @@ Dialog {
     // replace the first, but never something the user typed themselves.
     property string suggestedName: ""
 
-    // Whether the habit is counted or checked. This used to be expressed by
-    // leaving the goal field empty, which asked the user to say something by
-    // NOT doing something -- the one thing a form can never make obvious.
-    // Now it is a choice with two visible answers.
+    // Whether the habit is counted or checked. Two visible answers, not a
+    // field left empty.
     property bool goalCounts: false
 
-    readonly property var typeKeys: ["boolean", "numeric", "scale", "reference", "structured"]
+    // The folded part of the page.
+    property bool more: false
+
     readonly property var freqKeys: ["daily", "weekly_n", "custom_interval"]
-    readonly property var profileKeys: ["strength", "timed", "reps", "free"]
+
+    // The five, in the order they are shown. Shared with the empty habit list.
+    readonly property var types: HabitTypes.list()
 
     // Counted habits sum their entries against the goal; the rest just count
     // how many times you logged.
     readonly property bool sumsValues: valueType === "numeric" || valueType === "reference"
+    readonly property bool usesKind: valueType === "reference" || valueType === "structured"
+    readonly property string kindNature: valueType === "structured" ? "practise" : "finish"
 
     // What the goal is measured in. A numeric habit carries its own unit; a
-    // library habit reads its kind's; everything else counts bare entries.
+    // shelf habit reads its kind's; everything else counts bare entries.
     readonly property string goalUnit: valueType === "numeric"
         ? unitField.text.trim()
         : (valueType === "reference" ? page.kindUnitText : "")
 
     canAccept: nameField.text.trim().length > 0
                && (valueType !== "scale" || scaleMax >= 1)
-               && (valueType !== "reference" || page.kindId >= 0)
+               && (!usesKind || page.kindId >= 0)
 
     acceptDestinationAction: PageStackAction.Pop
 
@@ -96,12 +112,27 @@ Dialog {
         page.suggestName()
     }
 
+    // Choosing a type. A kind belongs to one nature, so switching between
+    // Finish it and Practise it lets go of a kind that no longer fits -- and
+    // when there is exactly one kind that does, it is chosen for you.
+    function chooseType(key) {
+        if (page.editing) return
+        page.valueType = key
+        if (!page.usesKind) return
+        var k = page.kindId >= 0 ? Storage.kindById(page.kindId) : null
+        if (k !== null && k.nature === page.kindNature) return
+        page.kindId = -1
+        page.refreshKind()
+        var list = Storage.kinds({ nature: page.kindNature })
+        if (list.length === 1) page.applyKind(list[0].id)
+    }
+
     // animatorPush hands back an operation, not the page, so the signal has to
     // be wired up once the page exists. The fallback covers the case where the
     // operation already IS the page.
     function pickKind() {
         var op = pageStack.animatorPush(Qt.resolvedUrl("KindPage.qml"),
-                                        { currentKindId: page.kindId })
+                                        { currentKindId: page.kindId, nature: page.kindNature })
         if (op === null || op === undefined) return
         if (op.pageCompleted !== undefined) {
             op.pageCompleted.connect(function(p) { p.kindPicked.connect(page.applyKind) })
@@ -111,22 +142,22 @@ Dialog {
     }
 
     Component.onCompleted: {
-        if (sourceId < 0) return
+        if (sourceId < 0) {
+            if (page.startType !== "") page.chooseType(page.startType)
+            return
+        }
         var h = Storage.getHabit(sourceId)
         if (h === null) return
 
         // A copy needs a name of its own. Prefilled rather than blank.
         nameField.text = duplicating ? qsTr("%1 (copy)").arg(h.name) : h.name
         page.valueType = h.valueType
-        typeCombo.currentIndex = Math.max(0, typeKeys.indexOf(h.valueType))
 
         page.frequency = h.frequency
         freqCombo.currentIndex = Math.max(0, freqKeys.indexOf(h.frequency))
         if (h.frequencyN > 0) page.frequencyN = h.frequencyN
 
         page.detailProfile = h.detailProfile
-        profileCombo.currentIndex = Math.max(0, profileKeys.indexOf(h.detailProfile))
-
         page.timeOfDay = h.timeOfDay
         if (h.kindId >= 0) {
             page.kindId = h.kindId
@@ -142,6 +173,9 @@ Dialog {
             page.goalCounts = true
             dailyTargetField.text = String(h.dailyTarget)
         }
+        // Open what is already set, so it is not hidden from the person
+        // who set it.
+        if (h.timeOfDay !== "" || h.targetValue !== null) page.more = true
     }
 
     onAccepted: {
@@ -159,7 +193,7 @@ Dialog {
             if (!isNaN(dp) && dp > 0) daily = dp
         }
 
-        // A reference habit has no unit of its own -- it reads the kind's.
+        // A shelf habit has no unit of its own -- it reads the kind's.
         var unit = valueType === "numeric" ? unitField.text.trim() : ""
 
         var payload = {
@@ -171,8 +205,8 @@ Dialog {
             targetValue: target,
             frequency: frequency,
             frequencyN: frequency === "daily" ? null : frequencyN,
-            detailProfile: valueType === "structured" ? detailProfile : null,
-            kindId: valueType === "reference" ? page.kindId : -1,
+            detailProfile: valueType === "structured" ? page.detailProfile : null,
+            kindId: page.usesKind ? page.kindId : -1,
             dailyTarget: daily,
             timeOfDay: timeOfDay
         }
@@ -212,59 +246,102 @@ Dialog {
                 onAccepted: page.accept()
             }
 
-            // -- What gets recorded ------------------------------------------
+            // -- What kind of habit -------------------------------------------
 
-            ComboBox {
-                id: typeCombo
-                width: parent.width
-                label: qsTr("What do you record?")
-                currentIndex: 0
-                // Log entries keep their own copy of the type, so old entries
-                // would survive a change -- but a habit that means one thing
-                // in June and another in July is not worth the confusion.
-                enabled: !page.editing
-                menu: ContextMenu {
-                    highlightColor: FiatMosTheme.accent
-
-                    MenuItem {
-                        text: qsTr("Check")
-                        color: FiatMosTheme.primaryText
-                    }
-                    MenuItem {
-                        text: qsTr("Number")
-                        color: FiatMosTheme.primaryText
-                    }
-                    MenuItem {
-                        text: qsTr("Rating")
-                        color: FiatMosTheme.primaryText
-                    }
-                    MenuItem {
-                        text: qsTr("Library")
-                        color: FiatMosTheme.primaryText
-                    }
-                    MenuItem {
-                        text: qsTr("Session")
-                        color: FiatMosTheme.primaryText
-                    }
-                }
-                onCurrentIndexChanged: page.valueType = page.typeKeys[currentIndex]
+            SectionLabel {
+                x: Theme.horizontalPageMargin
+                text: page.editing ? qsTr("What it records") : qsTr("What do you want to keep?")
             }
 
-            // One word in the list, the explanation underneath. The words
-            // have to stand next to each other and still be readable.
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - Theme.horizontalPageMargin * 2
-                wrapMode: Text.WordWrap
-                font.pixelSize: Theme.fontSizeExtraSmall
-                color: FiatMosTheme.secondaryText
-                text: {
-                    var vt = page.valueType
-                    if (vt === "boolean") return qsTr("Done or not done. One tap and today is finished.")
-                    if (vt === "numeric") return qsTr("A number with a unit — minutes run, kilos lifted.")
-                    if (vt === "scale") return qsTr("A value on a scale you decide — sleep, mood.")
-                    if (vt === "reference") return qsTr("Something you work through, piece by piece. Books, repertoire, rolls of film.")
-                    return qsTr("A whole session of exercises and sets — gym, rehab, practice.")
+            Column {
+                width: parent.width
+
+                Repeater {
+                    model: page.types
+
+                    Column {
+                        width: parent.width
+                        // Once a habit exists, what it records is fixed; only
+                        // its own row is shown, and it cannot be changed.
+                        visible: !page.editing || modelData.key === page.valueType
+
+                        // The breath between the simple three and the rich
+                        // two. Space, not a word.
+                        Item {
+                            width: 1
+                            height: Theme.paddingLarge
+                            visible: index === 3 && !page.editing
+                        }
+
+                        BackgroundItem {
+                            id: typeRow
+                            readonly property bool chosen: page.valueType === modelData.key
+                            width: parent.width
+                            height: typeCol.height + Theme.paddingMedium * 2
+                            enabled: !page.editing
+                            highlightedColor: FiatMosTheme.highlightWash
+                            onClicked: page.chooseType(modelData.key)
+
+                            Column {
+                                id: typeCol
+                                anchors.verticalCenter: parent.verticalCenter
+                                x: Theme.horizontalPageMargin
+                                width: parent.width - Theme.horizontalPageMargin * 2
+                                spacing: Theme.paddingSmall / 2
+
+                                Label {
+                                    width: parent.width
+                                    text: modelData.title
+                                    font.pixelSize: Theme.fontSizeMedium
+                                    font.bold: typeRow.chosen
+                                    color: typeRow.chosen ? FiatMosTheme.accent
+                                         : (typeRow.highlighted ? FiatMosTheme.accent : FiatMosTheme.primaryText)
+                                }
+
+                                Label {
+                                    width: parent.width
+                                    wrapMode: Text.WordWrap
+                                    text: modelData.examples
+                                    font.pixelSize: Theme.fontSizeExtraSmall
+                                    color: FiatMosTheme.secondaryText
+                                }
+
+                                // What the chosen one brings with it. A hairline
+                                // in the accent on the left, the lines beside it.
+                                Item {
+                                    width: parent.width
+                                    height: getsCol.height + Theme.paddingSmall
+                                    visible: typeRow.chosen
+
+                                    Rectangle {
+                                        y: Theme.paddingSmall
+                                        width: 2
+                                        height: getsCol.height
+                                        color: Theme.rgba(FiatMosTheme.accent, 0.45)
+                                    }
+
+                                    Column {
+                                        id: getsCol
+                                        y: Theme.paddingSmall
+                                        x: Theme.paddingMedium
+                                        width: parent.width - x
+                                        spacing: Theme.paddingSmall / 2
+
+                                        Repeater {
+                                            model: modelData.gets
+                                            Label {
+                                                width: getsCol.width
+                                                wrapMode: Text.WordWrap
+                                                text: modelData
+                                                font.pixelSize: Theme.fontSizeExtraSmall
+                                                color: FiatMosTheme.primaryText
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -278,7 +355,7 @@ Dialog {
                 text: qsTr("What a habit records is fixed once it has history. Everything else can change.")
             }
 
-            // -- Number ------------------------------------------------------
+            // -- What follows from it -------------------------------------------
 
             TextField {
                 id: unitField
@@ -290,30 +367,6 @@ Dialog {
                 EnterKey.iconSource: "image://theme/icon-m-enter-next"
                 EnterKey.onClicked: focus = false
             }
-
-            TextField {
-                id: targetField
-                width: parent.width
-                visible: page.valueType === "numeric"
-                label: qsTr("Long-run target (optional)")
-                placeholderText: qsTr("e.g. 30")
-                inputMethodHints: Qt.ImhFormattedNumbersOnly
-                color: FiatMosTheme.primaryText
-                EnterKey.iconSource: "image://theme/icon-m-enter-close"
-                EnterKey.onClicked: focus = false
-            }
-
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - Theme.horizontalPageMargin * 2
-                visible: page.valueType === "numeric"
-                wrapMode: Text.WordWrap
-                font.pixelSize: Theme.fontSizeExtraSmall
-                color: FiatMosTheme.secondaryText
-                text: qsTr("Set this and the history view shows how far above or below it you run. It does not affect whether today counts as done — that is the daily goal below.")
-            }
-
-            // -- Scale -------------------------------------------------------
 
             Column {
                 width: parent.width
@@ -353,107 +406,94 @@ Dialog {
                 }
             }
 
-            // -- Library --------------------------------------------------------
-            //
-            // The habit is tied to one kind, and the kind owns the unit. That
-            // is what makes "one habit, one unit" true by construction rather
-            // than by discipline. An audiobook is a different kind, and so a
-            // different habit -- which is right, because 4200 pages in 830
-            // minutes is a sentence nobody should be able to produce.
-            //
-            // The choice used to be a row of pills, which worked at three
-            // kinds and fell apart at twenty. It is a ValueRow into its own
-            // page now: one line here, a searchable list behind it.
-
-            Column {
+            // The kind of thing. For Finish it the unit comes with it, which is
+            // what makes "one habit, one unit" true by construction: an
+            // audiobook is a different kind, so a different habit, and "4200
+            // pages in 830 minutes" is a sentence nobody can produce. For
+            // Practise it the kind is where the habit's things live.
+            ValueRow {
                 width: parent.width
-                visible: page.valueType === "reference"
-                spacing: Theme.paddingSmall
-
-                ValueRow {
-                    width: parent.width
-                    label: qsTr("Works through")
-                    placeholder: qsTr("Choose a kind…")
-                    value: page.kindName
-                    detail: page.kindUnitText
-                    onClicked: page.pickKind()
-                }
-
-                Label {
-                    x: Theme.horizontalPageMargin
-                    width: parent.width - Theme.horizontalPageMargin * 2
-                    wrapMode: Text.WordWrap
-                    font.pixelSize: Theme.fontSizeExtraSmall
-                    color: FiatMosTheme.secondaryText
-                    text: page.kindId >= 0
-                        ? qsTr("The unit comes with the kind, which is why this habit can never mix pages and minutes. You add the things themselves from Library.")
-                        : qsTr("Pick what this habit works through. The unit comes with it.")
-                }
+                visible: page.usesKind
+                label: page.valueType === "structured" ? qsTr("Practises") : qsTr("Works through")
+                placeholder: qsTr("Choose a kind…")
+                // A practising habit's things belong to its kind, and their
+                // history with them. Moving the habit to another kind would
+                // leave every exercise behind, so once made it stays.
+                enabled: !(page.editing && page.valueType === "structured")
+                opacity: enabled ? 1.0 : 0.6
+                value: page.kindName
+                detail: page.valueType === "reference" ? page.kindUnitText : ""
+                onClicked: page.pickKind()
             }
 
-            // -- Structured --------------------------------------------------
-
-            Column {
-                width: parent.width
-                visible: page.valueType === "structured"
-                spacing: Theme.paddingSmall
-
-                ComboBox {
-                    id: profileCombo
-                    width: parent.width
-                    label: qsTr("What does each set record?")
-                    currentIndex: 0
-                    menu: ContextMenu {
-                        highlightColor: FiatMosTheme.accent
-
-                        MenuItem {
-                            text: qsTr("Reps and weight — strength training")
-                            color: FiatMosTheme.primaryText
-                        }
-                        MenuItem {
-                            text: qsTr("Time — practice, planks, stretches")
-                            color: FiatMosTheme.primaryText
-                        }
-                        MenuItem {
-                            text: qsTr("Reps only — rehab, bodyweight")
-                            color: FiatMosTheme.primaryText
-                        }
-                        MenuItem {
-                            text: qsTr("Just a note — free form")
-                            color: FiatMosTheme.primaryText
-                        }
-                    }
-                    onCurrentIndexChanged: page.detailProfile = page.profileKeys[currentIndex]
-                }
-
-                Label {
-                    x: Theme.horizontalPageMargin
-                    width: parent.width - Theme.horizontalPageMargin * 2
-                    wrapMode: Text.WordWrap
-                    font.pixelSize: Theme.fontSizeExtraSmall
-                    color: FiatMosTheme.secondaryText
-                    text: qsTr("A session holds several exercises, and each exercise holds one or more sets. Your first session is free form — when you save it you can turn it into a routine, and the next one starts prefilled from the last.")
-                }
-            }
-
-            // -- Name ------------------------------------------------------------
-            //
-            // After the description, not before it: by now the page knows
-            // enough to propose something.
+            // -- Name --------------------------------------------------------------
 
             TextField {
                 id: nameField
                 width: parent.width
                 label: qsTr("Name")
-                placeholderText: page.valueType === "reference" && page.kindName !== ""
-                    ? qsTr("Work through %1").arg(page.kindName)
-                    : qsTr("Name")
+                placeholderText: {
+                    if (page.valueType === "reference" && page.kindName !== "")
+                        return qsTr("Work through %1").arg(page.kindName)
+                    if (page.valueType === "structured") return qsTr("Gym, rehab, organ…")
+                    return qsTr("Name")
+                }
                 color: FiatMosTheme.primaryText
                 EnterKey.iconSource: "image://theme/icon-m-enter-close"
                 EnterKey.onClicked: focus = false
             }
 
-            // -- Daily goal ---------------------------------------------------
+            // -- How often -----------------------------------------------------
+
+            ComboBox {
+                id: freqCombo
+                width: parent.width
+                label: qsTr("How often?")
+                currentIndex: 0
+                menu: ContextMenu {
+                    highlightColor: FiatMosTheme.accent
+
+                    MenuItem {
+                        text: qsTr("Every day")
+                        color: FiatMosTheme.primaryText
+                    }
+                    MenuItem {
+                        text: qsTr("A number of times per week")
+                        color: FiatMosTheme.primaryText
+                    }
+                    MenuItem {
+                        text: qsTr("Every few days")
+                        color: FiatMosTheme.primaryText
+                    }
+                }
+                onCurrentIndexChanged: page.frequency = page.freqKeys[currentIndex]
+            }
+
+            Flow {
+                x: Theme.horizontalPageMargin
+                width: parent.width - Theme.horizontalPageMargin * 2
+                spacing: Theme.paddingSmall
+                visible: page.frequency !== "daily"
+
+                Label {
+                    height: Theme.itemSizeExtraSmall
+                    verticalAlignment: Text.AlignVCenter
+                    text: page.frequency === "weekly_n" ? qsTr("times a week") : qsTr("days between")
+                    font.pixelSize: Theme.fontSizeExtraSmall
+                    color: FiatMosTheme.secondaryText
+                }
+
+                Repeater {
+                    model: page.frequency === "weekly_n" ? [1, 2, 3, 4, 5, 6] : [2, 3, 4, 7, 14, 30]
+                    Pill {
+                        text: modelData
+                        selected: page.frequencyN === Number(modelData)
+                        onClicked: page.frequencyN = Number(modelData)
+                    }
+                }
+            }
+
+            // -- A day's worth ---------------------------------------------------
             //
             // Two answers, both visible. Nothing here is expressed by leaving
             // a field empty.
@@ -497,8 +537,9 @@ Dialog {
                 EnterKey.onClicked: focus = false
             }
 
-            // Says the choice back in plain language, with the unit in it.
-            // Serif, because it is the one sentence on the page worth reading.
+            // Says the whole choice back in plain language, with the unit in
+            // it. Serif, because it is the one sentence on the page worth
+            // reading.
             Label {
                 x: Theme.horizontalPageMargin
                 width: parent.width - Theme.horizontalPageMargin * 2
@@ -507,147 +548,154 @@ Dialog {
                 font.family: FiatMosTheme.serif
                 color: FiatMosTheme.primaryText
                 text: {
+                    var day
                     if (!page.goalCounts) {
-                        return qsTr("One entry and today is done. The list shows it as a dot.")
+                        day = qsTr("One entry and the day is done.")
+                    } else {
+                        var n = dailyTargetField.text.trim()
+                        if (n === "") n = dailyTargetField.placeholderText
+                        if (!page.sumsValues) day = qsTr("%1 entries and the day is done.").arg(n)
+                        else if (page.goalUnit === "") day = qsTr("%1 a day.").arg(n)
+                        else day = qsTr("%1 %2 a day.").arg(n).arg(page.goalUnit)
                     }
-                    var n = dailyTargetField.text.trim()
-                    if (n === "") n = dailyTargetField.placeholderText
-                    if (!page.sumsValues) {
-                        return qsTr("%1 entries and today is done. The list shows a ring filling as you go.").arg(n)
-                    }
-                    if (page.goalUnit === "") {
-                        return qsTr("%1 a day. The list shows a ring filling as you go.").arg(n)
-                    }
-                    return qsTr("%1 %2 a day. The list shows a ring filling as you go.")
-                        .arg(n).arg(page.goalUnit)
+                    var f = page.frequency
+                    var n2 = page.frequencyN
+                    var when = f === "daily"
+                             ? qsTr("It counts on any day you do it.")
+                             : f === "weekly_n"
+                             ? qsTr("It counts in any week you do it at least %1 times.").arg(n2)
+                             : qsTr("It counts as long as no more than %1 days pass between logs.").arg(n2)
+                    return day + " " + when
                 }
             }
 
-            // -- Time of day ---------------------------------------------------
+            // -- More: everything with a sensible default ------------------------
 
-            SectionLabel {
-                x: Theme.horizontalPageMargin
-                text: qsTr("Time of day")
-            }
-
-            Flow {
-                x: Theme.horizontalPageMargin
-                width: parent.width - Theme.horizontalPageMargin * 2
-                spacing: Theme.paddingSmall
-
-                Pill {
-                    text: qsTr("Anytime")
-                    selected: page.timeOfDay === ""
-                    onClicked: page.timeOfDay = ""
-                }
-                Pill {
-                    text: qsTr("Morning")
-                    selected: page.timeOfDay === "morning"
-                    onClicked: page.timeOfDay = "morning"
-                }
-                Pill {
-                    text: qsTr("Afternoon")
-                    selected: page.timeOfDay === "afternoon"
-                    onClicked: page.timeOfDay = "afternoon"
-                }
-                Pill {
-                    text: qsTr("Evening")
-                    selected: page.timeOfDay === "evening"
-                    onClicked: page.timeOfDay = "evening"
-                }
-            }
-
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - Theme.horizontalPageMargin * 2
-                wrapMode: Text.WordWrap
-                font.pixelSize: Theme.fontSizeExtraSmall
-                color: FiatMosTheme.secondaryText
-                text: qsTr("Only used when you turn on grouping in the list. It is where you want to see the habit, not when you happen to log it.")
-            }
-
-            // -- Frequency -----------------------------------------------------
-
-            ComboBox {
-                id: freqCombo
+            BackgroundItem {
+                id: moreHead
                 width: parent.width
-                label: qsTr("How often?")
-                currentIndex: 0
-                menu: ContextMenu {
-                    highlightColor: FiatMosTheme.accent
+                height: Theme.itemSizeMedium
+                highlightedColor: FiatMosTheme.highlightWash
+                onClicked: page.more = !page.more
 
-                    MenuItem {
-                        text: qsTr("Every day")
-                        color: FiatMosTheme.primaryText
-                    }
-                    MenuItem {
-                        text: qsTr("A number of times per week")
-                        color: FiatMosTheme.primaryText
-                    }
-                    MenuItem {
-                        text: qsTr("Every few days")
-                        color: FiatMosTheme.primaryText
-                    }
-                }
-                onCurrentIndexChanged: page.frequency = page.freqKeys[currentIndex]
-            }
-
-            Column {
-                width: parent.width
-                visible: page.frequency !== "daily"
-                spacing: Theme.paddingSmall
-
-                SectionLabel {
-                    x: Theme.horizontalPageMargin
-                    text: page.frequency === "weekly_n"
-                        ? qsTr("Times per week")
-                        : qsTr("Days between")
-                }
-
-                Flow {
+                Rectangle {
                     x: Theme.horizontalPageMargin
                     width: parent.width - Theme.horizontalPageMargin * 2
-                    spacing: Theme.paddingSmall
-
-                    Repeater {
-                        model: page.frequency === "weekly_n" ? [1, 2, 3, 4, 5, 6] : [2, 3, 4, 7, 14, 30]
-                        Pill {
-                            text: modelData
-                            selected: page.frequencyN === Number(modelData)
-                            onClicked: page.frequencyN = Number(modelData)
-                        }
+                    height: 1
+                    color: FiatMosTheme.innerBorder
+                }
+                Label {
+                    id: moreLabel
+                    x: Theme.horizontalPageMargin
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: qsTr("More")
+                    color: FiatMosTheme.primaryText
+                    font.pixelSize: Theme.fontSizeMedium
+                }
+                Label {
+                    anchors.left: moreLabel.right
+                    anchors.leftMargin: Theme.paddingLarge
+                    anchors.right: caret.left
+                    anchors.rightMargin: Theme.paddingMedium
+                    anchors.verticalCenter: parent.verticalCenter
+                    horizontalAlignment: Text.AlignRight
+                    truncationMode: TruncationMode.Fade
+                    text: {
+                        if (page.more) return ""
+                        var parts = []
+                        parts.push(page.timeOfDay === "" ? qsTr("anytime") : page.timeOfDayName(page.timeOfDay))
+                        if (page.valueType === "numeric" && targetField.text.trim() !== "")
+                            parts.push(qsTr("target %1").arg(targetField.text.trim()))
+                        return parts.join(" · ")
                     }
+                    color: FiatMosTheme.secondaryText
+                    font.pixelSize: Theme.fontSizeExtraSmall
+                }
+                Label {
+                    id: caret
+                    anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin; verticalCenter: parent.verticalCenter }
+                    text: "›"
+                    color: FiatMosTheme.secondaryText
+                    font.pixelSize: Theme.fontSizeLarge
+                    rotation: page.more ? 270 : 90
+                    Behavior on rotation { NumberAnimation { duration: 160 } }
                 }
             }
 
-            // -- Plain-language summary ----------------------------------------
+            Item {
+                id: morePanel
+                width: parent.width
+                height: page.more ? moreColumn.height + Theme.paddingLarge : 0
+                visible: height > 0.5
+                clip: true
+                Behavior on height { NumberAnimation { duration: 200; easing.type: Easing.InOutQuad } }
 
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - Theme.horizontalPageMargin * 2
-                wrapMode: Text.WordWrap
-                font.pixelSize: Theme.fontSizeExtraSmall
-                color: FiatMosTheme.secondaryText
-                text: {
-                    var vt = page.valueType
-                    var f = page.frequency
-                    var n = page.frequencyN
-                    var sm = page.scaleMax
-                    var what = vt === "boolean" ? qsTr("You tick it off each time.")
-                             : vt === "numeric" ? qsTr("You enter a number each time.")
-                             : vt === "scale" ? qsTr("You pick a value from 0 to %1 each time.").arg(sm)
-                             : vt === "reference" ? qsTr("You pick something from your library each time, and optionally how much.")
-                             : qsTr("You record a whole session each time.")
-                    var when = f === "daily"
-                             ? qsTr("It counts as done on any day you finish it.")
-                             : f === "weekly_n"
-                             ? qsTr("It counts as done in any week you finish it at least %1 times.").arg(n)
-                             : qsTr("It counts as done as long as no more than %1 days pass between logs.").arg(n)
-                    return what + " " + when
+                Column {
+                    id: moreColumn
+                    width: parent.width
+                    spacing: Theme.paddingSmall
+
+                    SectionLabel {
+                        x: Theme.horizontalPageMargin
+                        text: qsTr("Time of day")
+                    }
+
+                    Flow {
+                        x: Theme.horizontalPageMargin
+                        width: parent.width - Theme.horizontalPageMargin * 2
+                        spacing: Theme.paddingSmall
+
+                        Repeater {
+                            model: ["", "morning", "afternoon", "evening"]
+                            Pill {
+                                text: modelData === "" ? qsTr("Anytime") : page.timeOfDayName(modelData)
+                                selected: page.timeOfDay === modelData
+                                onClicked: page.timeOfDay = modelData
+                            }
+                        }
+                    }
+
+                    Label {
+                        x: Theme.horizontalPageMargin
+                        width: parent.width - Theme.horizontalPageMargin * 2
+                        wrapMode: Text.WordWrap
+                        font.pixelSize: Theme.fontSizeExtraSmall
+                        color: FiatMosTheme.secondaryText
+                        text: qsTr("Only used when you turn on grouping in the list. It is where you want to see the habit, not when you happen to log it.")
+                    }
+
+                    TextField {
+                        id: targetField
+                        width: parent.width
+                        visible: page.valueType === "numeric"
+                        label: qsTr("Long-run target (optional)")
+                        placeholderText: qsTr("e.g. 30")
+                        inputMethodHints: Qt.ImhFormattedNumbersOnly
+                        color: FiatMosTheme.primaryText
+                        EnterKey.iconSource: "image://theme/icon-m-enter-close"
+                        EnterKey.onClicked: focus = false
+                    }
+
+                    Label {
+                        x: Theme.horizontalPageMargin
+                        width: parent.width - Theme.horizontalPageMargin * 2
+                        visible: page.valueType === "numeric"
+                        wrapMode: Text.WordWrap
+                        font.pixelSize: Theme.fontSizeExtraSmall
+                        color: FiatMosTheme.secondaryText
+                        text: qsTr("Set this and the history view shows how far above or below it you run. It does not affect whether a day counts as done — that is the daily goal.")
+                    }
                 }
             }
         }
 
         VerticalScrollDecorator { }
+    }
+
+    function timeOfDayName(t) {
+        if (t === "morning") return qsTr("Morning")
+        if (t === "afternoon") return qsTr("Afternoon")
+        if (t === "evening") return qsTr("Evening")
+        return qsTr("Anytime")
     }
 }
