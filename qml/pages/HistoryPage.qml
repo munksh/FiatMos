@@ -36,9 +36,52 @@ Page {
         return Qt.formatDate(d, Qt.DefaultLocaleShortDate)
     }
 
+    property var facts: null
+
+    function accent(t) {
+        return "<font color=\"" + FiatMosTheme.accent + "\">" + t + "</font>"
+    }
+
+    function withUnit(v, u) {
+        var r = Math.round(v * 100) / 100
+        return u === "" ? String(r) : r + " " + u
+    }
+
+    // The first sentence: the answer to the question this kind of habit asks.
+    // Did I do it -- the run and how often. How much -- a usual day and the
+    // goal. How was it -- this month against the last.
+    function headline() {
+        var f = page.facts, h = page.habit
+        if (f === null || h === null) return ""
+        if (h.valueType === "scale") {
+            if (f.thisMonth === null) return qsTr("Nothing rated this month yet.")
+            if (f.lastMonth === null) return qsTr("This month averages %1.").arg(page.accent(f.thisMonth))
+            if (f.thisMonth === f.lastMonth) return qsTr("This month averages %1, the same as last month.").arg(page.accent(f.thisMonth))
+            return (f.thisMonth > f.lastMonth
+                    ? qsTr("This month averages %1, up from %2 last month.")
+                    : qsTr("This month averages %1, down from %2 last month."))
+                   .arg(page.accent(f.thisMonth)).arg(f.lastMonth)
+        }
+        if ((h.valueType === "numeric" || h.valueType === "reference") && f.median !== null) {
+            var s = qsTr("A usual day is %1.").arg(page.accent(page.withUnit(f.median, f.unit)))
+            if (f.goalDays >= 0) s += " " + qsTr("The goal was reached on %1 of the last 30 days.").arg(f.goalDays)
+            return s
+        }
+        if (f.lastDays === 0) return qsTr("Nothing logged in the last 30 days.")
+        var run = ""
+        if (f.streak > 0) {
+            run = h.frequency === "weekly_n"
+                ? (f.streak === 1 ? qsTr("%1 in a row.").arg(page.accent(qsTr("1 week"))) : qsTr("%1 in a row.").arg(page.accent(qsTr("%1 weeks").arg(f.streak))))
+                : (f.streak === 1 ? qsTr("%1 in a row.").arg(page.accent(qsTr("1 time"))) : qsTr("%1 in a row.").arg(page.accent(qsTr("%1 times").arg(f.streak))))
+            run += " "
+        }
+        return run + qsTr("Done on %1 of the last 30 days.").arg(f.lastDays)
+    }
+
     function refresh() {
         habit = Storage.getHabit(habitId)
         if (habit === null) return
+        facts = Storage.habitFacts(habit)
         days = Storage.series(habit, lookback)
 
         var m = habit.valueType === "scale" ? Math.max(1, habit.scaleMax) : 1
@@ -83,6 +126,21 @@ Page {
                     return page.habit === null ? "" : page.habit.name
                 }
                 subtitle: qsTr("History")
+            }
+
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - Theme.horizontalPageMargin * 2
+                wrapMode: Text.WordWrap
+                textFormat: Text.StyledText
+                font.pixelSize: Theme.fontSizeMedium
+                font.family: FiatMosTheme.serif
+                color: FiatMosTheme.primaryText
+                visible: text !== ""
+                text: {
+                    var _g = page.gen
+                    return page.headline()
+                }
             }
 
             // -- Range ------------------------------------------------------

@@ -90,7 +90,7 @@ Page {
                     onClicked: page.filterIndex = 0
                 }
                 Pill {
-                    text: qsTr("Finished")
+                    text: qsTr("Done")
                     selected: page.filterIndex === 1
                     onClicked: page.filterIndex = 1
                 }
@@ -190,7 +190,7 @@ Page {
                 }
                 MenuItem {
                     visible: model.active
-                    text: qsTr("Mark as finished")
+                    text: model.doneWord === "learned" ? qsTr("Mark as learned") : qsTr("Mark as finished")
                     color: FiatMosTheme.primaryText
                     onClicked: {
                         Storage.setItemState(model.itemId, "completed")
@@ -271,7 +271,8 @@ Page {
                         var parts = []
                         if (model.creator !== "") parts.push(model.creator)
                         if (model.kindName !== "") parts.push(model.kindName)
-                        if (!model.active) parts.push(model.state)
+                        if (model.state === "completed") parts.push(model.doneWord === "learned" ? qsTr("learned") : qsTr("finished"))
+                        else if (model.state === "archived") parts.push(qsTr("put away"))
                         if (model.extent > 0) {
                             parts.push(qsTr("%1 of %2").arg(model.soFar).arg(model.extent))
                         } else if (model.loggedDays > 0) {
@@ -318,7 +319,7 @@ Page {
     // empty -- exactly when this needs to be visible.
     EmptyNote {
         enabled: itemModel.count === 0
-        text: page.filterIndex === 1 ? qsTr("Nothing finished yet") : qsTr("Nothing here")
+        text: page.filterIndex === 1 ? qsTr("Nothing done yet") : qsTr("Nothing here")
         hintText: page.tagFilter !== ""
             ? qsTr("No items tagged %1").arg(page.tagFilter)
             : qsTr("Pull down to add something you are working through")

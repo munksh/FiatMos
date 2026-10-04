@@ -37,10 +37,13 @@ Page {
     property bool inventing: false
     // For a new practise kind: how its things start out being measured.
     property string newMeasure: "weight_reps"
+    // For a new shelf kind: what done is called.
+    property string newDone: "finished"
 
-    function detailOf(unit, measure) {
+    function detailOf(unit, measure, done) {
         if (page.practising) return qsTr("each starts as %1").arg(Measures.label(measure))
-        return unit === "" ? qsTr("no unit") : qsTr("measured in %1").arg(unit)
+        var u = unit === "" ? qsTr("no unit") : qsTr("measured in %1").arg(unit)
+        return done === "learned" ? u + " · " + qsTr("learned when done") : u
     }
 
     ListModel { id: kindModel }
@@ -60,6 +63,7 @@ Page {
                                name: mine[i].name,
                                unit: mine[i].unit,
                                measure: mine[i].measure,
+                               done: mine[i].doneWord,
                                section: "yours" })
             anyShown++
         }
@@ -72,6 +76,7 @@ Page {
                                name: starters[j].name,
                                unit: starters[j].unit,
                                measure: starters[j].measure === undefined ? "weight_reps" : starters[j].measure,
+                               done: starters[j].done === undefined ? "finished" : starters[j].done,
                                section: "common" })
             anyShown++
         }
@@ -84,9 +89,9 @@ Page {
         }
     }
 
-    function choose(kindId, name, unit, measure) {
+    function choose(kindId, name, unit, measure, done) {
         var id = kindId
-        if (id < 0) id = Storage.addKind(name, unit, page.nature, measure)
+        if (id < 0) id = Storage.addKind(name, unit, page.nature, measure, done)
         if (id < 0) return
         page.kindPicked(id)
         pageStack.pop()
@@ -117,7 +122,7 @@ Page {
 
             PageHead {
                 title: qsTr("Kind")
-                subtitle: page.practising ? qsTr("things you practise") : qsTr("things you finish")
+                subtitle: page.practising ? qsTr("kinds of exercise") : qsTr("things you finish or learn")
             }
 
             TextField {
@@ -155,7 +160,7 @@ Page {
             width: listView.width
             height: Theme.itemSizeSmall
             highlightedColor: FiatMosTheme.highlightWash
-            onClicked: page.choose(model.kindId, model.name, model.unit, model.measure)
+            onClicked: page.choose(model.kindId, model.name, model.unit, model.measure, model.done)
 
             readonly property bool current: model.kindId >= 0 && model.kindId === page.currentKindId
 
@@ -174,7 +179,7 @@ Page {
 
                 Label {
                     width: parent.width
-                    text: page.detailOf(model.unit, model.measure)
+                    text: page.detailOf(model.unit, model.measure, model.done)
                     font.pixelSize: Theme.fontSizeExtraSmall
                     color: FiatMosTheme.secondaryText
                     truncationMode: TruncationMode.Fade
@@ -236,7 +241,7 @@ Page {
                         width: parent.width
                         font.pixelSize: Theme.fontSizeExtraSmall
                         color: FiatMosTheme.secondaryText
-                        text: page.practising ? qsTr("Your own kind of thing to practise")
+                        text: page.practising ? qsTr("Your own kind of exercise")
                                               : qsTr("Your own kind, your own unit")
                     }
                 }
@@ -274,6 +279,32 @@ Page {
                 text: qsTr("Set once, now. The unit is never changed afterwards — that would reinterpret every number already logged against it.")
             }
 
+            // What done is called for things of this kind. A piece or a text
+            // you learn by heart is learned; everything else is finished.
+            SectionLabel {
+                x: Theme.horizontalPageMargin
+                visible: page.inventing && !page.practising
+                text: qsTr("When one is done, it is")
+            }
+
+            Flow {
+                x: Theme.horizontalPageMargin
+                width: listView.width - Theme.horizontalPageMargin * 2
+                spacing: Theme.paddingSmall
+                visible: page.inventing && !page.practising
+
+                Pill {
+                    text: qsTr("finished")
+                    selected: page.newDone === "finished"
+                    onClicked: page.newDone = "finished"
+                }
+                Pill {
+                    text: qsTr("learned")
+                    selected: page.newDone === "learned"
+                    onClicked: page.newDone = "learned"
+                }
+            }
+
             // A thing you practise has no unit: each thing is measured its
             // own way. This is only how a new one starts, and can be changed
             // on any of them later.
@@ -304,7 +335,7 @@ Page {
                 visible: page.inventing
                 text: qsTr("use this kind")
                 enabled: newName.text.trim() !== "" && (page.practising || newUnit.text.trim() !== "")
-                onClicked: page.choose(-1, newName.text.trim(), page.practising ? "" : newUnit.text.trim(), page.newMeasure)
+                onClicked: page.choose(-1, newName.text.trim(), page.practising ? "" : newUnit.text.trim(), page.newMeasure, page.newDone)
             }
 
             Item { width: 1; height: Theme.paddingLarge }

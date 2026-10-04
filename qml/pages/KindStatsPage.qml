@@ -166,7 +166,9 @@ Page {
                     for (var i = 0; i < page.st.items.length; i++) {
                         if (Storage.isActiveState(page.st.items[i].state)) open++
                     }
-                    var first = qsTr("%1 finished, %2 on the go.").arg(page.st.finished).arg(open)
+                    var learned = page.st.kind !== null && page.st.kind.doneWord === "learned"
+                    var first = learned ? qsTr("%1 learned, %2 on the go.").arg(page.st.finished).arg(open)
+                                        : qsTr("%1 finished, %2 on the go.").arg(page.st.finished).arg(open)
                     var second = page.st.days === 1
                         ? qsTr("%1 on one day.").arg(page.amount(page.st.total))
                         : qsTr("%1 on %2 days.").arg(page.amount(page.st.total)).arg(page.st.days)
@@ -521,7 +523,8 @@ Page {
                                 var a = page.dayLabel(modelData.first), b = page.dayLabel(modelData.last)
                                 parts.push(a === b ? a : a + " – " + b)
                                 if (Storage.isActiveState(modelData.state)) parts.push(qsTr("on the go"))
-                                else if (modelData.finishedHere) parts.push(qsTr("finished"))
+                                else if (modelData.finishedHere)
+                                    parts.push(page.st.kind !== null && page.st.kind.doneWord === "learned" ? qsTr("learned") : qsTr("finished"))
                                 return parts.join("  ·  ")
                             }
                         }

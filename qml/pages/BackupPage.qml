@@ -175,7 +175,7 @@ Page {
                 wrapMode: Text.WordWrap
                 font.pixelSize: Theme.fontSizeExtraSmall
                 color: FiatMosTheme.secondaryText
-                text: qsTr("Writes everything — habits, entries, your shelf, practice and sessions — to one file in your Documents folder. Nothing leaves the phone unless you send it yourself.")
+                text: qsTr("Writes everything — habits, entries, your shelf, workouts and sessions — to one file in your Documents folder. Nothing leaves the phone unless you send it yourself.")
             }
 
             // The one page in Mos with buttons. Exporting and replacing are

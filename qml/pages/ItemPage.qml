@@ -33,6 +33,18 @@ Page {
         return u === "" ? String(r) : r + " " + u
     }
 
+    // Minutes add up to hours quickly; past an hour and a half they are said
+    // in hours, which is how anyone would say them.
+    function longAmount(v) {
+        var u = page.st === null ? "" : page.st.unit
+        if ((u === "minutes" || u === "min") && v >= 90) return (Math.round(v / 6) / 10) + " h"
+        return page.amount(v)
+    }
+
+    function accent(t) {
+        return "<font color=\"" + FiatMosTheme.accent + "\">" + t + "</font>"
+    }
+
     function dayLabel(key) {
         if (key === undefined || key === null || key === "") return ""
         return Qt.formatDate(Storage.dateFromDayKey(key.substr(0, 10)), Qt.DefaultLocaleShortDate)
@@ -125,10 +137,35 @@ Page {
                 subtitle: {
                     var _g = page.gen
                     if (page.it === null) return ""
-                    var state = page.it.state === "completed" ? qsTr("finished")
+                    var state = page.it.state === "completed" ? (page.it.doneWord === "learned" ? qsTr("learned") : qsTr("finished"))
                               : page.it.state === "archived" ? qsTr("put away")
                               : qsTr("on the go")
                     return page.it.creator === "" ? state : page.it.creator + " · " + state
+                }
+            }
+
+            // The one sentence the page is for: how much has gone into it,
+            // over how long, and what a usual sitting is.
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - Theme.horizontalPageMargin * 2
+                wrapMode: Text.WordWrap
+                textFormat: Text.StyledText
+                font.pixelSize: Theme.fontSizeMedium
+                font.family: FiatMosTheme.serif
+                color: FiatMosTheme.primaryText
+                visible: text !== ""
+                text: {
+                    var _g = page.gen
+                    if (page.st === null || page.it === null || page.st.days === 0) return ""
+                    var n = page.st.days === 1 ? qsTr("1 sitting") : qsTr("%1 sittings").arg(page.st.days)
+                    var head = page.st.total > 0 ? page.accent(page.longAmount(page.st.total)) : page.accent(n)
+                    var over = page.st.total > 0 ? qsTr("%1 over %2").arg(head).arg(n) : head
+                    var since = page.it.state === "completed"
+                        ? qsTr("%1, from %2 to %3.").arg(over).arg(page.dayLabel(page.st.first)).arg(page.dayLabel(page.st.last))
+                        : qsTr("%1 since %2.").arg(over).arg(page.dayLabel(page.st.first))
+                    if (page.st.median === null || page.st.days < 2) return since
+                    return since + " " + qsTr("A usual sitting is %1.").arg(page.amount(page.st.median))
                 }
             }
 
@@ -382,7 +419,8 @@ Page {
                     var _g = page.gen
                     if (page.st === null || page.it === null) return ""
                     if (page.it.state === "completed" && page.it.finishedAt)
-                        return qsTr("Finished %1, after %2.").arg(page.dayLabel(page.it.finishedAt))
+                        return (page.it.doneWord === "learned" ? qsTr("Learned %1, after %2.") : qsTr("Finished %1, after %2."))
+                            .arg(page.dayLabel(page.it.finishedAt))
                             .arg(page.st.days === 1 ? qsTr("1 sitting") : qsTr("%1 sittings").arg(page.st.days))
                     if (page.st.estimate === null) return ""
                     return qsTr("%1 left. At your median of %2, that is about %3 more.")

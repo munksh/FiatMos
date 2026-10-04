@@ -45,7 +45,6 @@ Page {
                 }
                 if (!stillThere) bookId = -1
             }
-            if (bookId < 0 && readingItems.length === 1) bookId = readingItems[0].id
         }
         gen++
     }
@@ -55,13 +54,19 @@ Page {
         var note = noteField.text.trim()
 
         if (habit.valueType === "reference") {
-            if (bookId < 0) return
             var amount = null
             if (numberField.text.trim() !== "") {
                 var a = parseFloat(numberField.text.replace(",", "."))
                 if (!isNaN(a)) amount = a
             }
-            Storage.addReferenceEntry(habit, bookId, amount, note, page.day)
+            // Without a thing it is still a log: it counts toward the day and
+            // the habit, just not toward any one thing on the shelf.
+            if (bookId < 0) {
+                if (amount === null) return
+                Storage.addEntry(habit, { numeric: amount, note: note, loggedAt: Storage.loggedAtFor(page.day) })
+            } else {
+                Storage.addReferenceEntry(habit, bookId, amount, note, page.day)
+            }
         } else {
             var values = { note: note, loggedAt: Storage.loggedAtFor(page.day) }
             if (habit.valueType === "numeric") {
@@ -78,6 +83,7 @@ Page {
         numberField.text = ""
         noteField.text = ""
         page.scaleValue = -1
+        page.bookId = -1
         refresh()
     }
 
@@ -206,53 +212,6 @@ Page {
                 }
             }
 
-            // -- Reference: which book ----------------------------------------
-
-            Column {
-                width: parent.width
-                spacing: Theme.paddingSmall
-                visible: {
-                    var _g = page.gen
-                    return page.habit !== null && page.habit.valueType === "reference"
-                }
-
-                SectionLabel {
-                    x: Theme.horizontalPageMargin
-                    text: qsTr("Item")
-                }
-
-                Flow {
-                    x: Theme.horizontalPageMargin
-                    width: parent.width - Theme.horizontalPageMargin * 2
-                    spacing: Theme.paddingSmall
-
-                    Repeater {
-                        model: {
-                            var _g = page.gen
-                            return page.readingItems.length
-                        }
-                        Pill {
-                            text: page.readingItems[index].title
-                            selected: page.bookId === page.readingItems[index].id
-                            onClicked: page.bookId = page.readingItems[index].id
-                        }
-                    }
-                }
-
-                Label {
-                    x: Theme.horizontalPageMargin
-                    width: parent.width - Theme.horizontalPageMargin * 2
-                    visible: {
-                        var _g = page.gen
-                        return page.readingItems.length === 0
-                    }
-                    wrapMode: Text.WordWrap
-                    font.pixelSize: Theme.fontSizeExtraSmall
-                    color: FiatMosTheme.secondaryText
-                    text: qsTr("Nothing on the go. Add something from the Shelf in the pull-down menu.")
-                }
-            }
-
             // -- Number (numeric habits, and the optional amount for books) ----
 
             TextField {
@@ -268,14 +227,14 @@ Page {
                     if (page.habit === null) return ""
                     if (page.habit.valueType === "reference") {
                         var u = Storage.unitForHabit(page.habit)
-                        return u === "" ? qsTr("Amount (optional)") : qsTr("%1 (optional)").arg(u)
+                        return u === "" ? qsTr("Amount") : u
                     }
                     return page.habit.unit === "" ? qsTr("Value") : qsTr("Value (%1)").arg(page.habit.unit)
                 }
                 placeholderText: {
                     var _g = page.gen
                     if (page.habit === null) return qsTr("Value")
-                    if (page.habit.valueType === "reference") return qsTr("Leave empty to just mark it read")
+                    if (page.habit.valueType === "reference") return qsTr("How much")
                     if (page.habit.targetValue === null) return qsTr("Value")
                     return qsTr("Target: %1").arg(page.habit.targetValue)
                 }
@@ -283,6 +242,57 @@ Page {
                 color: FiatMosTheme.primaryText
                 EnterKey.iconSource: "image://theme/icon-m-enter-close"
                 EnterKey.onClicked: focus = false
+            }
+
+            // -- Shelf habits: which, if you like ---------------------------------
+            //
+            // After the amount, and never chosen for you. "Organ, 30 min" is a
+            // whole log on its own; saying which piece is the extra step for the
+            // days you want it. Tap the chosen one again to let it go.
+
+            Column {
+                width: parent.width
+                spacing: Theme.paddingSmall
+                visible: {
+                    var _g = page.gen
+                    return page.habit !== null && page.habit.valueType === "reference"
+                }
+
+                SectionLabel {
+                    x: Theme.horizontalPageMargin
+                    text: qsTr("Which, if you like")
+                }
+
+                Flow {
+                    x: Theme.horizontalPageMargin
+                    width: parent.width - Theme.horizontalPageMargin * 2
+                    spacing: Theme.paddingSmall
+
+                    Repeater {
+                        model: {
+                            var _g = page.gen
+                            return page.readingItems.length
+                        }
+                        Pill {
+                            text: page.readingItems[index].title
+                            selected: page.bookId === page.readingItems[index].id
+                            onClicked: page.bookId = (page.bookId === page.readingItems[index].id) ? -1 : page.readingItems[index].id
+                        }
+                    }
+                }
+
+                Label {
+                    x: Theme.horizontalPageMargin
+                    width: parent.width - Theme.horizontalPageMargin * 2
+                    visible: {
+                        var _g = page.gen
+                        return page.readingItems.length === 0
+                    }
+                    wrapMode: Text.WordWrap
+                    font.pixelSize: Theme.fontSizeExtraSmall
+                    color: FiatMosTheme.secondaryText
+                    text: qsTr("Nothing on the go. You can still log the amount; things to log against are added from the Shelf in the pull-down menu.")
+                }
             }
 
             // -- Scale ---------------------------------------------------------
@@ -482,7 +492,7 @@ Page {
                 if (page.habit === null) return false
                 if (page.habit.valueType === "numeric") return _n.trim() !== ""
                 if (page.habit.valueType === "scale") return _s >= 0
-                if (page.habit.valueType === "reference") return _b >= 0
+                if (page.habit.valueType === "reference") return _b >= 0 || _n.trim() !== ""
                 return true
             }
             onClicked: page.saveEntry()
