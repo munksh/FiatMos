@@ -248,6 +248,20 @@ var MIGRATIONS = [
             "CREATE INDEX IF NOT EXISTS idx_component_item ON component(item_id)"
         ],
         run: function(tx) { linkPractise(tx) }
+    },
+    {
+        version: 11,
+        // What "done" is called for a kind on the shelf. A book is finished;
+        // a piece of music, or a text learned by heart, is learned. One of two
+        // words, set when the kind is made -- not free text, so the shelf can
+        // always say it in the same breath as everything else.
+        //
+        // NULL reads as "finished", which is what every kind was until now.
+        // The two kinds that were always about learning get the other word.
+        statements: [
+            "ALTER TABLE item_kind ADD COLUMN done_word TEXT",
+            "UPDATE item_kind SET done_word = 'learned' WHERE done_word IS NULL AND name IN ('repertoire', 'texts')"
+        ]
     }
 ]
 
@@ -802,13 +816,16 @@ var STARTER_KINDS = [
     { name: "article", unit: "pages", nature: "finish" },
     { name: "course", unit: "lessons", nature: "finish" },
     { name: "film", unit: "minutes", nature: "finish" },
+    { name: "repertoire", unit: "minutes", nature: "finish", done: "learned" },
+    { name: "texts", unit: "minutes", nature: "finish", done: "learned" },
     { name: "photo roll", unit: "frames", nature: "finish" },
     { name: "series", unit: "episodes", nature: "finish" },
     { name: "draft", unit: "words", nature: "finish" },
-    // Things you practise. No unit: each thing carries a measure instead,
-    // and the kind's is only where a new thing starts.
+    // Things you work out with. No unit: each exercise carries a measure
+    // instead, and the kind's is only where a new one starts. Music and
+    // texts are not here on purpose -- you learn a piece the way you read a
+    // book, so they live on the shelf.
     { name: "exercises", unit: "", nature: "practise", measure: "weight_reps" },
-    { name: "pieces", unit: "", nature: "practise", measure: "time" },
     { name: "stretches", unit: "", nature: "practise", measure: "time" },
     { name: "routes", unit: "", nature: "practise", measure: "time_distance" }
 ]
@@ -833,6 +850,11 @@ function measureForProfile(profile) {
     return profile === "timed" ? "time" : "weight_reps"
 }
 
+// What "done" is called for things of a kind: "finished" or "learned".
+function cleanDoneWord(w) {
+    return w === "learned" ? "learned" : "finished"
+}
+
 // Anything not finished or put away is still on the go.
 function isActiveState(state) {
     return state !== "completed" && state !== "archived"
@@ -846,7 +868,8 @@ function rowToKind(row) {
         name: row.name,
         unit: (row.unit === null || row.unit === undefined) ? "" : row.unit,
         nature: cleanNature(row.nature),
-        measure: cleanMeasure(row.measure)
+        measure: cleanMeasure(row.measure),
+        doneWord: cleanDoneWord(row.done_word)
     }
 }
 
@@ -880,7 +903,7 @@ function kindById(kindId) {
 //
 // nature and measure are optional; a kind made without them is something you
 // finish, as every kind was before.
-function addKind(name, unit, nature, measure) {
+function addKind(name, unit, nature, measure, doneWord) {
     var id = -1
     var clean = String(name).trim()
     if (clean === "") return -1
@@ -890,9 +913,10 @@ function addKind(name, unit, nature, measure) {
         if (e.rows.length > 0) {
             id = e.rows.item(0).id
         } else {
-            var r = tx.executeSql("INSERT INTO item_kind (name, unit, nature, measure, uid) VALUES (?, ?, ?, ?, ?)",
+            var r = tx.executeSql("INSERT INTO item_kind (name, unit, nature, measure, done_word, uid) VALUES (?, ?, ?, ?, ?, ?)",
                                   [clean, (unit === undefined || unit === null) ? "" : String(unit).trim(),
-                                   n, n === "practise" ? cleanMeasure(measure) : null, newUid()])
+                                   n, n === "practise" ? cleanMeasure(measure) : null,
+                                   n === "finish" ? cleanDoneWord(doneWord) : null, newUid()])
             id = r.insertId
         }
     })
@@ -1014,6 +1038,7 @@ function rowToItem(row) {
         extent: (row.extent === null || row.extent === undefined) ? 0 : row.extent,
         isbn: (row.isbn === null || row.isbn === undefined) ? "" : row.isbn,
         nature: cleanNature(row.kind_nature),
+        doneWord: cleanDoneWord(row.kind_done),
         // A thing's own measure, else its kind's.
         measure: (row.measure !== null && row.measure !== undefined && row.measure !== "")
                  ? cleanMeasure(row.measure) : cleanMeasure(row.kind_measure)
@@ -1023,7 +1048,7 @@ function rowToItem(row) {
 function itemById(itemId) {
     var it = null
     db().readTransaction(function(tx) {
-        var r = tx.executeSql("SELECT i.*, k.name AS kind_name, k.unit AS unit, k.nature AS kind_nature, k.measure AS kind_measure FROM item i LEFT JOIN item_kind k ON k.id = i.kind_id WHERE i.id = ?", [itemId])
+        var r = tx.executeSql("SELECT i.*, k.name AS kind_name, k.unit AS unit, k.nature AS kind_nature, k.measure AS kind_measure, k.done_word AS kind_done FROM item i LEFT JOIN item_kind k ON k.id = i.kind_id WHERE i.id = ?", [itemId])
         if (r.rows.length > 0) it = rowToItem(r.rows.item(0))
     })
     return it
@@ -1044,7 +1069,7 @@ function items(filter) {
     filter = filter || {}
     var out = []
     db().readTransaction(function(tx) {
-        var sql = "SELECT i.*, k.name AS kind_name, k.unit AS unit, k.nature AS kind_nature, k.measure AS kind_measure FROM item i LEFT JOIN item_kind k ON k.id = i.kind_id"
+        var sql = "SELECT i.*, k.name AS kind_name, k.unit AS unit, k.nature AS kind_nature, k.measure AS kind_measure, k.done_word AS kind_done FROM item i LEFT JOIN item_kind k ON k.id = i.kind_id"
         var args = []
         if (filter.tag !== undefined && filter.tag !== "") {
             sql += " JOIN item_tag t ON t.item_id = i.id AND t.tag = ?"
@@ -1098,6 +1123,7 @@ function loadItems(model, filter) {
             finishedAt: it.finishedAt === null ? "" : it.finishedAt,
             extent: it.extent,
             isbn: it.isbn,
+            doneWord: it.doneWord,
             soFar: it.extent > 0 ? Math.round(itemTotal(it.id) * 100) / 100 : 0
         })
     }
@@ -1856,15 +1882,20 @@ function things(kindId, includeArchived) {
 }
 
 // Every session one thing was part of, oldest first. One entry per DAY, like
-// a sitting on the shelf: two sessions of the same habit cannot share a day,
-// but two habits can, and the plank done at rehab and at the gym on the same
-// Tuesday is one Tuesday of planks.
+// a sitting on the shelf. Two habits can share a day -- the plank done at
+// rehab and at the gym on the same Tuesday is one Tuesday of planks.
+//
+// Within one habit, only the LAST session of a day counts. Before a save
+// rewrote the day's session, every save made a new one, so some old days
+// hold the same workout three or six times over. That last one is the one
+// the session page itself has always shown; the others stay in the database,
+// untouched, and are simply not counted twice.
 //
 // [{ day, details: [...] }]
 function thingDays(itemId) {
     var byDay = {}, order = []
     db().readTransaction(function(tx) {
-        var r = tx.executeSql("SELECT substr(s.started_at, 1, 10) AS day, d.reps AS reps, d.weight_kg AS weight_kg, d.duration_sec AS duration_sec, d.distance_m AS distance_m, d.note AS note FROM component c JOIN session s ON s.id = c.session_id LEFT JOIN detail d ON d.component_id = c.id WHERE c.item_id = ? ORDER BY s.started_at, s.id, c.sort_order, d.id", [itemId])
+        var r = tx.executeSql("SELECT substr(s.started_at, 1, 10) AS day, d.reps AS reps, d.weight_kg AS weight_kg, d.duration_sec AS duration_sec, d.distance_m AS distance_m, d.note AS note FROM component c JOIN session s ON s.id = c.session_id LEFT JOIN detail d ON d.component_id = c.id WHERE c.item_id = ? AND s.id = (SELECT MAX(s2.id) FROM session s2 WHERE s2.habit_id = s.habit_id AND substr(s2.started_at, 1, 10) = substr(s.started_at, 1, 10)) ORDER BY s.started_at, s.id, c.sort_order, d.id", [itemId])
         for (var i = 0; i < r.rows.length; i++) {
             var row = r.rows.item(i)
             if (byDay[row.day] === undefined) { byDay[row.day] = []; order.push(row.day) }
@@ -1890,12 +1921,13 @@ function round2(v) { return Math.round(v * 100) / 100 }
 // 8 × 90, not a claim about what you could lift.
 function dayFacts(details, measure) {
     var f = { sets: details.length, reps: 0, top: 0, volume: 0, best: 0,
-              minutes: 0, km: 0, value: 0 }
+              minutes: 0, km: 0, value: 0, maxSet: 0 }
     for (var i = 0; i < details.length; i++) {
         var d = details[i]
         var reps = (d.reps === null || d.reps === undefined || d.reps === "") ? 0 : Number(d.reps)
         var w = (d.weight === null || d.weight === undefined || d.weight === "") ? 0 : Number(d.weight)
         f.reps += reps
+        if (reps > f.maxSet) f.maxSet = reps
         if (w > f.top) f.top = w
         f.volume += reps * w
         if (w > 0 && reps > 0) {
@@ -1961,21 +1993,40 @@ function setSummary(details, measure) {
         var hasR = r !== null && r !== undefined && r !== ""
         var hasW = w !== null && w !== undefined && w !== "" && Number(w) > 0
         if (!hasR && !hasW) continue
-        sets.push({ r: hasR ? Number(r) : 0, w: hasW ? Number(w) : 0, hasR: hasR })
+        sets.push({ r: hasR ? Number(r) : 0, w: hasW ? Number(w) : 0 })
     }
     if (sets.length === 0) return details.length === 1 ? "1 set" : details.length + " sets"
-    var same = true
-    for (i = 1; i < sets.length; i++) if (sets[i].r !== sets[0].r || sets[i].w !== sets[0].w) same = false
-    if (same) {
-        var s0 = sets[0]
-        var core = sets.length > 1 ? sets.length + " × " + s0.r : s0.r + " reps"
-        if (s0.w > 0) return core + " · " + fmt(s0.w) + " kg"
-        return sets.length > 1 ? core + " reps" : core
+    // Sets that follow each other and are the same are said once, with how
+    // many: "2 × 10 · 20 kg, 2 × 10 · 22.5 kg", not the same set four times.
+    var groups = []
+    for (i = 0; i < sets.length; i++) {
+        var g = groups.length > 0 ? groups[groups.length - 1] : null
+        if (g !== null && g.r === sets[i].r && g.w === sets[i].w) g.n++
+        else groups.push({ n: 1, r: sets[i].r, w: sets[i].w })
     }
     var anyW = false
-    for (i = 0; i < sets.length; i++) if (sets[i].w > 0) anyW = true
-    for (i = 0; i < sets.length; i++) parts.push(anyW ? sets[i].r + " × " + fmt(sets[i].w) : String(sets[i].r))
-    return parts.join(", ") + (anyW ? " kg" : " reps")
+    for (i = 0; i < groups.length; i++) if (groups[i].w > 0) anyW = true
+    if (!anyW) {
+        // Bodyweight. "5, 4, 3, 2 reps" while every set differs; "2 × 5,
+        // 2 × 3 reps" once sets repeat.
+        var allOne = true
+        for (i = 0; i < groups.length; i++) if (groups[i].n > 1) allOne = false
+        for (i = 0; i < groups.length; i++) {
+            if (allOne) parts.push(String(groups[i].r))
+            else parts.push(groups[i].n > 1 ? groups[i].n + " × " + groups[i].r : String(groups[i].r))
+        }
+        if (groups.length === 1 && groups[0].n === 1) return groups[0].r + " reps"
+        return parts.join(", ") + " reps"
+    }
+    if (groups.length === 1) {
+        var only = groups[0]
+        return (only.n > 1 ? only.n + " × " + only.r : only.r + " reps") + " · " + fmt(only.w) + " kg"
+    }
+    for (i = 0; i < groups.length; i++) {
+        var gr = groups[i]
+        parts.push((gr.n > 1 ? gr.n + " × " : "") + gr.r + (gr.w > 0 ? " · " + fmt(gr.w) : ""))
+    }
+    return parts.join(", ") + " kg"
 }
 
 // The thing of this kind that answers to `name`, or -1.
@@ -2012,9 +2063,30 @@ function lastTimeFor(kindId, name, beforeDay) {
     return { itemId: itemId, day: "", details: [], measure: it.measure, summary: "" }
 }
 
+// The things one habit has used, most recently used first. What the session
+// page offers before anything is typed: your own exercises, not everything
+// of the kind.
+function habitThings(habitId, limit) {
+    var out = []
+    db().readTransaction(function(tx) {
+        var r = tx.executeSql("SELECT i.id AS id, MAX(s.started_at) AS last FROM component c JOIN session s ON s.id = c.session_id JOIN item i ON i.id = c.item_id WHERE s.habit_id = ? AND i.state <> 'archived' GROUP BY i.id ORDER BY last DESC", [habitId])
+        for (var k = 0; k < r.rows.length; k++) out.push(r.rows.item(k).id)
+    })
+    var list = []
+    for (var j = 0; j < out.length; j++) {
+        var it = itemById(out[j])
+        if (it !== null) list.push(it)
+        if (limit !== undefined && limit > 0 && list.length >= limit) break
+    }
+    return list
+}
+
 // The things of a kind that start with or contain what is being typed, for
-// picking an exercise by name. Starts-with first.
-function thingSuggestions(kindId, text, limit) {
+// picking an exercise by name. Starts-with first. With nothing typed and a
+// habit given, that habit's own things instead of the whole kind.
+function thingSuggestions(kindId, text, limit, habitId) {
+    if (nameKey(text) === "" && habitId !== undefined && habitId !== null && habitId >= 0)
+        return habitThings(habitId, limit)
     var t = nameKey(text)
     var list = things(kindId, false)
     var first = [], rest = []
@@ -2044,7 +2116,7 @@ function thingStats(itemId) {
     for (var i = 0; i < days.length; i++) {
         var f = dayFacts(days[i].details, m)
         var row = { day: days[i].day, sets: f.sets, reps: f.reps, top: f.top, volume: f.volume,
-                    best: f.best, minutes: f.minutes, km: f.km, value: f.value,
+                    best: f.best, minutes: f.minutes, km: f.km, value: f.value, maxSet: f.maxSet,
                     summary: setSummary(days[i].details, m) }
         list.push(row)
         if (bestDay === null || row.value > bestDay.value) bestDay = row
@@ -2057,9 +2129,22 @@ function thingStats(itemId) {
     }
     if (then === null && list.length > 1) then = list[0]
     if (then !== null && latest !== null && then.day === latest.day) then = null
+    var maxSet = 0, maxDay = 0, sets = 0
+    for (var q = 0; q < list.length; q++) {
+        if (list[q].maxSet > maxSet) maxSet = list[q].maxSet
+        if (list[q].reps > maxDay) maxDay = list[q].reps
+        sets += list[q].sets
+    }
+    var weighted = false
+    for (var w = 0; w < list.length; w++) if (list[w].top > 0) weighted = true
     return {
         item: it,
         measure: m,
+        // Weight times reps with no weight anywhere yet: what counts is reps.
+        bodyweight: m === "weight_reps" && !weighted,
+        maxSet: maxSet,
+        maxDayReps: maxDay,
+        sets: sets,
         unit: valueUnit(m, latest),
         days: list,
         count: list.length,
@@ -2358,6 +2443,48 @@ function deviationFromTarget(habit, lookbackDays) {
     return sum / n
 }
 
+// What a habit's history page says in its first sentence. The numbers are
+// worked out here; the words belong to the page.
+//
+//   streak, lastDays (logged days of the last 30), median (a usual logged
+//   day, numbers only), goalDays (days of the last 30 that reached the daily
+//   goal, when there is one), thisMonth / lastMonth (mean rating per logged
+//   day, ratings only), unit.
+function habitFacts(habit) {
+    var s30 = series(habit, 30)
+    var logged = 0, goal = 0
+    var counted = habit.dailyTarget !== null && habit.dailyTarget > 0
+    for (var i = 0; i < s30.length; i++) {
+        if (s30[i].value === null) continue
+        logged++
+        if (counted && s30[i].value >= habit.dailyTarget) goal++
+    }
+    var out = { streak: streak(habit), lastDays: logged, goalDays: counted ? goal : -1,
+                median: null, thisMonth: null, lastMonth: null, unit: unitForHabit(habit) }
+    if (habit.valueType === "numeric" || habit.valueType === "reference") {
+        out.median = habitTotal(habit, 30).median
+    }
+    if (habit.valueType === "scale") {
+        var now = new Date()
+        var thisStart = dayKey(new Date(now.getFullYear(), now.getMonth(), 1))
+        var lastStart = dayKey(new Date(now.getFullYear(), now.getMonth() - 1, 1))
+        var rows = entriesSince(habit.id, lastStart)
+        var perDay = {}
+        for (var j = 0; j < rows.length; j++) {
+            var d = rows[j].loggedAt.substr(0, 10)
+            var v = rows[j].valueScale === null ? 0 : rows[j].valueScale
+            perDay[d] = perDay[d] === undefined ? v : Math.max(perDay[d], v)
+        }
+        var a = [0, 0], b = [0, 0]
+        for (var k in perDay) {
+            if (k >= thisStart) { a[0] += perDay[k]; a[1]++ } else { b[0] += perDay[k]; b[1]++ }
+        }
+        if (a[1] > 0) out.thisMonth = round1(a[0] / a[1])
+        if (b[1] > 0) out.lastMonth = round1(b[0] / b[1])
+    }
+    return out
+}
+
 // ---------------------------------------------------------------------------
 // Cover page
 // ---------------------------------------------------------------------------
@@ -2445,7 +2572,8 @@ function exportAll() {
             out.kinds.push({ ref: look("item_kind", kinds[a].id),
                              name: kinds[a].name, unit: kinds[a].unit,
                              nature: kinds[a].nature === undefined ? null : kinds[a].nature,
-                             measure: kinds[a].measure === undefined ? null : kinds[a].measure })
+                             measure: kinds[a].measure === undefined ? null : kinds[a].measure,
+                             doneWord: kinds[a].done_word === undefined ? null : kinds[a].done_word })
         }
 
         var habits = remember("habit", rowsOf(tx, "SELECT * FROM habit ORDER BY id"))
@@ -2605,9 +2733,10 @@ function importAll(data) {
             // nature and measure arrived in schema 10; an older file has
             // neither, and its kinds come in as things you finish.
             var kn = (k.nature === undefined || k.nature === null) ? null : cleanNature(k.nature)
-            var kr = tx.executeSql("INSERT INTO item_kind (name, unit, nature, measure, uid) VALUES (?, ?, ?, ?, ?)",
+            var kr = tx.executeSql("INSERT INTO item_kind (name, unit, nature, measure, done_word, uid) VALUES (?, ?, ?, ?, ?, ?)",
                                    [k.name, (k.unit === null || k.unit === undefined) ? "" : k.unit, kn,
                                     (k.measure === undefined || k.measure === null) ? null : cleanMeasure(k.measure),
+                                    (k.doneWord === undefined || k.doneWord === null) ? null : cleanDoneWord(k.doneWord),
                                     keep(k.ref)])
             map.item_kind[k.ref] = kr.insertId
         }
@@ -2715,6 +2844,9 @@ function importAll(data) {
         // The same step the migration ran ties them to things now -- it only
         // fills what is empty, so on a newer file it does nothing.
         linkPractise(tx)
+        // And a file from before schema 11 has no done word; the kinds that
+        // were always about learning get theirs, as the migration gave them.
+        tx.executeSql("UPDATE item_kind SET done_word = 'learned' WHERE done_word IS NULL AND name IN ('repertoire', 'texts')")
     })
 
     counts.ok = true

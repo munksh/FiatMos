@@ -19,7 +19,7 @@ function makeTx() { return { executeSql(sql, params) {
 const fakeDb = { transaction: cb => cb(makeTx()), readTransaction: cb => cb(makeTx()) }
 const sb = { LS: { LocalStorage: { openDatabaseSync: () => fakeDb } }, console: { log(){} }, Date, Math, parseInt, parseFloat, isNaN, JSON, Number, String }
 vm.createContext(sb)
-vm.runInContext(src + ';globalThis.__S={init,MIGRATIONS,currentVersion,addHabit,getHabit,lastSession,sessionForDay,saveSession,kinds,kindById,addKind,starterKinds,STARTER_KINDS,items,itemById,addItem,things,thingDays,thingStats,dayFacts,setSummary,lastTimeFor,thingSuggestions,thingIdByName,loadThings,addThing,updateThing,hasShelf,hasPractice,programs,addRoutine,exportAll,importAll,dayKey,addDays,dayOffsetKey,entriesSince,MEASURES,cleanMeasure,addReferenceEntry,itemsForHabit,kindStats}', sb)
+vm.runInContext(src + ';globalThis.__S={init,MIGRATIONS,currentVersion,addHabit,getHabit,lastSession,sessionForDay,saveSession,kinds,kindById,addKind,starterKinds,STARTER_KINDS,items,itemById,addItem,things,thingDays,thingStats,dayFacts,setSummary,lastTimeFor,thingSuggestions,thingIdByName,habitThings,habitFacts,addEntry,loadThings,addThing,updateThing,hasShelf,hasPractice,programs,addRoutine,exportAll,importAll,dayKey,addDays,dayOffsetKey,entriesSince,MEASURES,cleanMeasure,addReferenceEntry,itemsForHabit,kindStats}', sb)
 const S = sb.__S
 
 let fails = 0
@@ -170,7 +170,10 @@ ok('a kindless habit gets the practice kind', S.getHabit(yoga).kindId === gym.ki
 // What a thing's history says
 // ---------------------------------------------------------------------------
 ok('same sets read as sets × reps', S.setSummary([{ reps: 5, weight: 70 }, { reps: 5, weight: 70 }, { reps: 5, weight: 70 }], 'weight_reps') === '3 × 5 · 70 kg')
-ok('different sets are listed', S.setSummary([{ reps: 8, weight: 60 }, { reps: 6, weight: 65 }], 'weight_reps') === '8 × 60, 6 × 65 kg')
+ok('different sets are listed', S.setSummary([{ reps: 8, weight: 60 }, { reps: 6, weight: 65 }], 'weight_reps') === '8 · 60, 6 · 65 kg')
+ok('repeated sets are said once with how many', S.setSummary([{ reps: 10, weight: 20 }, { reps: 10, weight: 20 }, { reps: 10, weight: 22.5 }, { reps: 10, weight: 22.5 }], 'weight_reps') === '2 × 10 · 20, 2 × 10 · 22.5 kg', S.setSummary([{ reps: 10, weight: 20 }, { reps: 10, weight: 20 }, { reps: 10, weight: 22.5 }, { reps: 10, weight: 22.5 }], 'weight_reps'))
+ok('bodyweight sets that differ', S.setSummary([{ reps: 5 }, { reps: 4 }, { reps: 3 }, { reps: 2 }], 'weight_reps') === '5, 4, 3, 2 reps')
+ok('bodyweight sets that repeat', S.setSummary([{ reps: 5 }, { reps: 5 }, { reps: 3 }, { reps: 3 }], 'weight_reps') === '2 × 5, 2 × 3 reps')
 ok('no weight yet reads as reps', S.setSummary([{ reps: 12 }, { reps: 12 }], 'weight_reps') === '2 × 12 reps')
 ok('one set', S.setSummary([{ reps: 8, weight: 60 }], 'weight_reps') === '8 reps · 60 kg')
 ok('time', S.setSummary([{ duration: 90 }], 'time') === '1.5 min')
@@ -191,7 +194,7 @@ ok('stats: half a year back is the 200-day-old session', st.then !== null && st.
 ok('stats: best day is the heaviest', st.best.value === 70, st.best)
 ok('stats: unit is kg', st.unit === 'kg')
 const lt = S.lastTimeFor(gym.kindId, 'BENCH PRESS (barbell)', day(0))
-ok('last time before today, found by name', lt !== null && lt.day === day(-30) && lt.summary === '8 × 60, 6 × 65 kg', lt)
+ok('last time before today, found by name', lt !== null && lt.day === day(-30) && lt.summary === '8 · 60, 6 · 65 kg', lt)
 ok('last time for an unknown name is nothing', S.lastTimeFor(gym.kindId, 'Clean and jerk', day(0)) === null)
 ok('a thing is found by name in any case', S.thingIdByName(gym.kindId, ' SQUAT ') === th.find(t => t.title === 'Squat').id)
 ok('and an unknown name is -1', S.thingIdByName(gym.kindId, 'Snatch') === -1)
@@ -247,6 +250,54 @@ const g2 = S.getHabit(sqlite.prepare("SELECT id FROM habit WHERE name = 'Gym'").
 ok('and the gym habit has a practise kind again', S.kindById(g2.kindId).nature === 'practise')
 const b2 = S.things(g2.kindId).find(t => t.title.toLowerCase().indexOf('bench press') === 0)
 ok('bench press is one thing again with its history', b2 !== undefined && S.thingDays(b2.id).length === 3, b2)
+
+// ---------------------------------------------------------------------------
+// Old days saved several times count once
+// ---------------------------------------------------------------------------
+const pal = S.addThing({ title: 'Palloff press', kindId: g2.kindId, measure: 'weight_reps' })
+const yoga2 = sqlite.prepare("SELECT id FROM habit WHERE name = 'Yoga'").get().id
+const dd = day(-40) + 'T18:00:00'
+for (let k = 0; k < 3; k++) {
+  const e = sqlite.prepare("INSERT INTO log_entry (habit_id, logged_at, value_type) VALUES (?, ?, 'structured')").run(g2.id, dd)
+  const ss = sqlite.prepare("INSERT INTO session (habit_id, started_at, log_entry_id) VALUES (?, ?, ?)").run(g2.id, dd, Number(e.lastInsertRowid))
+  const cc = sqlite.prepare("INSERT INTO component (session_id, name, sort_order, item_id) VALUES (?, 'Palloff press', 0, ?)").run(Number(ss.lastInsertRowid), pal)
+  for (let j = 0; j < 4; j++) sqlite.prepare("INSERT INTO detail (component_id, reps, weight_kg) VALUES (?, 10, 7.5)").run(Number(cc.lastInsertRowid))
+}
+const pd = S.thingDays(pal)
+ok('a day saved three times counts once', pd.length === 1 && pd[0].details.length === 4, pd)
+ok('and says so plainly', S.setSummary(pd[0].details, 'weight_reps') === '4 × 10 · 7.5 kg')
+
+// ---------------------------------------------------------------------------
+// The session page offers the habit's own things first
+// ---------------------------------------------------------------------------
+const own = S.habitThings(g2.id).map(t => t.title)
+ok("a habit's own things, most recent first", ['Farmer walk', 'Bench press'].indexOf(own[0]) >= 0 && own.indexOf('Sun salutation') < 0 && own.indexOf('Squat') > 1, own)
+ok('with nothing typed and a habit given, only its own', S.thingSuggestions(g2.kindId, '', 8, yoga2).map(t => t.title).join() === 'Sun salutation')
+ok('typing still searches the whole kind', S.thingSuggestions(g2.kindId, 'sun', 8, g2.id).some(t => t.title === 'Sun salutation'))
+
+// ---------------------------------------------------------------------------
+// Done words
+// ---------------------------------------------------------------------------
+const rep = S.addKind('repertoire', 'minutes', 'finish', '', 'learned')
+ok('a kind can call done "learned"', S.kindById(rep).doneWord === 'learned')
+ok('anything else says finished', S.kindById(S.kinds({ nature: 'finish' }).find(k => k.name === 'book').id).doneWord === 'finished')
+ok('a piece carries the word', S.itemById(S.addItem({ title: 'Toccata', kindId: rep })).doneWord === 'learned')
+ok('repertoire is a shelf starter that is learned', S.STARTER_KINDS.some(k => k.name === 'repertoire' && k.nature === 'finish' && k.done === 'learned'))
+ok('no music among the workouts', !S.STARTER_KINDS.some(k => k.nature === 'practise' && /piece|repertoire/.test(k.name)))
+
+// ---------------------------------------------------------------------------
+// The first sentence of a history page
+// ---------------------------------------------------------------------------
+const water = S.addHabit({ name: 'Water', valueType: 'numeric', unit: 'glasses', dailyTarget: 6, frequency: 'daily' })
+for (const [n, v] of [[0, 6], [-1, 5], [-2, 7], [-3, 6]]) S.addEntry(S.getHabit(water), { numeric: v, loggedAt: day(n) + 'T12:00:00' })
+const wf = S.habitFacts(S.getHabit(water))
+ok('a usual day is the median', wf.median === 6, wf)
+ok('goal days counted', wf.goalDays === 3, wf)
+ok('logged days of the last 30', wf.lastDays === 4, wf)
+ok('streak', wf.streak === 4, wf)
+const sleep = S.addHabit({ name: 'Sleep', valueType: 'scale', scaleMax: 5, frequency: 'daily' })
+S.addEntry(S.getHabit(sleep), { scale: 4, loggedAt: day(0) + 'T07:00:00' })
+ok('a rating has a month mean', S.habitFacts(S.getHabit(sleep)).thisMonth === 4)
 
 console.log(fails === 0 ? '\nALL PASS' : '\n' + fails + ' FAILURES')
 process.exit(fails ? 1 : 0)
