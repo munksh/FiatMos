@@ -1978,6 +1978,18 @@ function setSummary(details, measure) {
     return parts.join(", ") + (anyW ? " kg" : " reps")
 }
 
+// The thing of this kind that answers to `name`, or -1.
+function thingIdByName(kindId, name) {
+    var key = nameKey(name)
+    if (key === "" || kindId === null || kindId === undefined || kindId < 0) return -1
+    var id = -1
+    db().readTransaction(function(tx) {
+        var idx = thingIndex(tx, kindId)
+        if (idx[key] !== undefined) id = idx[key]
+    })
+    return id
+}
+
 // The last time a thing was done before `beforeDay`, found by its name within
 // a kind -- which is how the session page knows it while you are still typing.
 // { itemId, day, details, measure, summary } or null.

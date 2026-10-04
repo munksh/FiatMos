@@ -3,15 +3,23 @@ import Sailfish.Silica 1.0
 import ".."
 import "../components"
 import "../Storage.js" as Storage
+import "../Measures.js" as Measures
 
-// Structured template: one session made of exercises, each made of sets.
+// A Practise it habit: one session made of things, each made of sets.
+//
+// Each exercise is a THING you practise -- named once, then found again by
+// name, with a history of its own. While you type a name the things you
+// already have are offered; under each exercise is what you did last time,
+// so you can see what to aim for without leaving the page. How a thing is
+// measured (weight × reps, time, time + distance) belongs to the thing, and
+// can be changed right here when you name it.
 //
 // The whole session lives in `comps` as plain UI state until Save. Prefilling
 // from the last session copies values into this array only -- nothing is
 // written to the database until you save, and the old session is never
 // touched.
 //
-// comps: [{ name, details: [{ reps, weight, minutes, note }] }]
+// comps: [{ name, measure, details: [{ reps, weight, minutes, km, note }] }]
 // All detail values are strings here; they are parsed on save.
 //
 // A set is a CARD. It reads as a card, swipes left to reveal Delete, and the
@@ -30,6 +38,12 @@ Page {
     property var comps: []
     property var routineList: []
     property int routineId: -1          // -1 = ad hoc
+    // Set by the Practice page: start from this program unless today
+    // already has a session.
+    property int startProgramId: -1
+    // How a new exercise starts out measured: the habit's kind's default.
+    property string defaultMeasure: "weight_reps"
+    property int kindId: -1
     property int gen: 0
     property int dayOffset: 0           // 0 today, -1 yesterday
     property string day: ""
@@ -47,11 +61,6 @@ Page {
     onEditingSetChanged: bump()
     property string pendingSet: ""      // the set counting down to deletion
 
-    readonly property string profile: {
-        var _g = page.gen
-        return page.habit === null ? "free" : page.habit.detailProfile
-    }
-
     function bump() {
         comps = comps.slice()
         gen++
@@ -62,11 +71,44 @@ Page {
     }
 
     function emptyDetail() {
-        return { reps: "", weight: "", minutes: "", note: "" }
+        return { reps: "", weight: "", minutes: "", km: "", note: "" }
     }
 
     function copyDetail(d) {
-        return { reps: d.reps, weight: d.weight, minutes: d.minutes, note: d.note }
+        return { reps: d.reps, weight: d.weight, minutes: d.minutes, km: d.km, note: d.note }
+    }
+
+    function measureOf(c) {
+        var _g = page.gen
+        var m = page.comps[c] === undefined ? "" : page.comps[c].measure
+        return (m === undefined || m === "") ? page.defaultMeasure : m
+    }
+
+    // A name that is already a thing brings that thing's measure with it --
+    // unless a measure was picked by hand while naming it, which then wins
+    // and becomes the thing's on save.
+    function settleName(c) {
+        var n = (page.comps[c].name || "").trim()
+        if (n === "" || page.comps[c].measurePicked === true) return
+        var id = Storage.thingIdByName(page.kindId, n)
+        if (id >= 0) {
+            var it = Storage.itemById(id)
+            if (it !== null) page.comps[c].measure = it.measure
+        }
+    }
+
+    // What this exercise was last time, before the day on the page. Said in
+    // words, or empty for a thing that is new.
+    function lastTimeText(c) {
+        var _g = page.gen
+        if (page.comps[c] === undefined) return ""
+        var n = (page.comps[c].name || "").trim()
+        if (n === "" || page.kindId < 0) return ""
+        var lt = Storage.lastTimeFor(page.kindId, n, page.day)
+        if (lt === null) return qsTr("new")
+        if (lt.day === "") return ""
+        var when = Qt.formatDate(Storage.dateFromDayKey(lt.day), "ddd d MMM")
+        return lt.summary === "" ? qsTr("last time %1").arg(when) : qsTr("last time %1 · %2").arg(when).arg(lt.summary)
     }
 
     function fromStored(details) {
@@ -77,6 +119,7 @@ Page {
                 reps: d.reps === null ? "" : String(d.reps),
                 weight: d.weight === null ? "" : String(d.weight),
                 minutes: d.duration === null ? "" : String(Math.round(d.duration / 6) / 10),
+                km: (d.distance === null || d.distance === undefined) ? "" : String(Math.round(d.distance) / 1000),
                 note: d.note === null ? "" : d.note
             })
         }
@@ -94,7 +137,8 @@ Page {
         var next = []
         if (s !== null) {
             for (var i = 0; i < s.components.length; i++) {
-                next.push({ name: s.components[i].name, details: fromStored(s.components[i].details) })
+                next.push({ name: s.components[i].name, measure: s.components[i].measure,
+                            details: fromStored(s.components[i].details) })
             }
         }
         comps = next
@@ -103,7 +147,7 @@ Page {
 
     function addExercise() {
         touched = true
-        comps.push({ name: "", details: [emptyDetail()] })
+        comps.push({ name: "", measure: page.defaultMeasure, details: [emptyDetail()] })
         renamingIndex = comps.length - 1     // a new exercise needs a name first
         bump()
     }
@@ -111,7 +155,7 @@ Page {
     function duplicateExercise(i) {
         touched = true
         var src = comps[i]
-        var copy = { name: src.name, details: [] }
+        var copy = { name: src.name, measure: src.measure, details: [] }
         for (var j = 0; j < src.details.length; j++) copy.details.push(copyDetail(src.details[j]))
         comps.splice(i + 1, 0, copy)
         bump()
@@ -156,20 +200,26 @@ Page {
     function save() {
         if (habit === null) return
 
+        // Only the fields the thing's measure shows are written. What a set
+        // already had in another field stays in the database untouched --
+        // it is only this page that does not show it.
         var payload = []
         for (var i = 0; i < comps.length; i++) {
+            var m = measureOf(i)
             var det = []
             for (var j = 0; j < comps[i].details.length; j++) {
                 var d = comps[i].details[j]
                 var minutes = num(d.minutes)
+                var km = num(d.km)
                 det.push({
-                    reps: page.profile === "strength" || page.profile === "reps" ? num(d.reps) : "",
-                    weight: page.profile === "strength" ? num(d.weight) : "",
-                    duration: (page.profile === "timed" && minutes !== "") ? Math.round(minutes * 60) : "",
+                    reps: m === "weight_reps" ? num(d.reps) : "",
+                    weight: m === "weight_reps" ? num(d.weight) : "",
+                    duration: (m !== "weight_reps" && minutes !== "") ? Math.round(minutes * 60) : "",
+                    distance: (m === "time_distance" && km !== "") ? Math.round(km * 1000) : "",
                     note: (d.note || "").trim()
                 })
             }
-            payload.push({ name: comps[i].name, details: det })
+            payload.push({ name: comps[i].name, measure: m, details: det })
         }
 
         var rid = routineId
@@ -190,8 +240,8 @@ Page {
             if ((comps[i].name || "").trim() === "") continue
             var d = comps[i].details || []
             for (var j = 0; j < d.length; j++) {
-                if (num(d[j].reps) !== "" || num(d[j].weight) !== ""
-                    || num(d[j].minutes) !== "" || (d[j].note || "").trim() !== "") return true
+                if (num(d[j].reps) !== "" || num(d[j].weight) !== "" || num(d[j].minutes) !== ""
+                    || num(d[j].km) !== "" || (d[j].note || "").trim() !== "") return true
             }
         }
         return false
@@ -233,22 +283,28 @@ Page {
             var next = []
             for (var i = 0; i < existing.components.length; i++) {
                 next.push({ name: existing.components[i].name,
+                            measure: existing.components[i].measure,
                             details: fromStored(existing.components[i].details) })
             }
             comps = next
             continuing = true
             bump()
+        } else if (page.startProgramId >= 0) {
+            selectRoutine(page.startProgramId)
         } else {
             var last = Storage.lastSession(habitId, null)
             if (last !== null && last.routineId !== null && last.routineId !== undefined) {
                 selectRoutine(last.routineId)
             } else {
                 routineId = -1
-                comps = [{ name: "", details: [emptyDetail()] }]
+                comps = [{ name: "", measure: page.defaultMeasure, details: [emptyDetail()] }]
                 renamingIndex = 0
                 bump()
             }
         }
+        // Only the first day the page opens on; switching days is your own
+        // choice again.
+        page.startProgramId = -1
         touched = false
     }
 
@@ -268,6 +324,11 @@ Page {
 
     Component.onCompleted: {
         habit = Storage.getHabit(habitId)
+        if (habit !== null && habit.kindId >= 0) {
+            kindId = habit.kindId
+            var k = Storage.kindById(kindId)
+            if (k !== null) defaultMeasure = k.measure
+        }
         routineList = Storage.routines(habitId)
         loadDay()
     }
@@ -359,7 +420,7 @@ Page {
 
             SectionLabel {
                 x: Theme.horizontalPageMargin
-                text: qsTr("Routine")
+                text: qsTr("Program")
             }
 
             Flow {
@@ -390,7 +451,7 @@ Page {
                 font.pixelSize: Theme.fontSizeExtraSmall
                 color: FiatMosTheme.secondaryText
                 visible: page.routineId >= 0
-                text: qsTr("Prefilled from your last session with this routine. Change whatever you like — the old session is untouched.")
+                text: qsTr("Prefilled from your last session with this program. Change whatever you like — the old session is untouched.")
             }
 
             // -- Exercises ----------------------------------------------------
@@ -406,11 +467,12 @@ Page {
 
                     // The exercise name is a heading you press and hold, not a
                     // field with a bin beside it. Holding is where the several
-                    // things you might do to it live.
+                    // things you might do to it live. Under the name: what it
+                    // was last time, so today has something to aim at.
                     ListItem {
                         id: exerciseItem
                         width: parent.width
-                        contentHeight: Theme.itemSizeSmall
+                        contentHeight: Math.max(Theme.itemSizeSmall, headCol.height + Theme.paddingMedium * 2)
                         highlightedColor: FiatMosTheme.highlightWash
                         visible: page.renamingIndex !== compColumn.compIndex
 
@@ -418,7 +480,7 @@ Page {
                             highlightColor: FiatMosTheme.accent
 
                             MenuItem {
-                                text: qsTr("Rename")
+                                text: qsTr("Rename or measure")
                                 color: FiatMosTheme.primaryText
                                 onClicked: page.renamingIndex = compColumn.compIndex
                             }
@@ -438,43 +500,149 @@ Page {
 
                         onClicked: page.renamingIndex = compColumn.compIndex
 
-                        Label {
+                        Column {
+                            id: headCol
                             anchors.verticalCenter: parent.verticalCenter
                             x: Theme.horizontalPageMargin
                             width: parent.width - Theme.horizontalPageMargin * 2
-                            truncationMode: TruncationMode.Fade
-                            font.pixelSize: Theme.fontSizeLarge
-                            font.family: FiatMosTheme.serif
-                            color: {
-                                var _g = page.gen
-                                var n = (page.comps[compColumn.compIndex].name || "").trim()
-                                return n === "" ? FiatMosTheme.secondaryText : FiatMosTheme.primaryText
+
+                            Label {
+                                width: parent.width
+                                truncationMode: TruncationMode.Fade
+                                font.pixelSize: Theme.fontSizeLarge
+                                font.family: FiatMosTheme.serif
+                                color: {
+                                    var _g = page.gen
+                                    var n = (page.comps[compColumn.compIndex].name || "").trim()
+                                    return n === "" ? FiatMosTheme.secondaryText : FiatMosTheme.primaryText
+                                }
+                                text: {
+                                    var _g = page.gen
+                                    var n = (page.comps[compColumn.compIndex].name || "").trim()
+                                    return n === "" ? qsTr("Unnamed exercise") : n
+                                }
                             }
-                            text: {
-                                var _g = page.gen
-                                var n = (page.comps[compColumn.compIndex].name || "").trim()
-                                return n === "" ? qsTr("Unnamed exercise") : n
+
+                            Label {
+                                width: parent.width
+                                visible: text !== ""
+                                truncationMode: TruncationMode.Fade
+                                font.pixelSize: Theme.fontSizeExtraSmall
+                                color: FiatMosTheme.secondaryText
+                                text: page.lastTimeText(compColumn.compIndex)
                             }
                         }
                     }
 
-                    TextField {
-                        id: nameField
+                    // Naming an exercise. The things you already practise are
+                    // offered as words while you type, and how this one is
+                    // measured sits right under the name -- the plank in a
+                    // strength session is timed, and that is said here, once.
+                    Column {
                         width: parent.width
                         visible: page.renamingIndex === compColumn.compIndex
-                        label: qsTr("Exercise")
-                        placeholderText: qsTr("Exercise")
-                        color: FiatMosTheme.primaryText
-                        Component.onCompleted: text = page.comps[compColumn.compIndex].name
-                        onTextChanged: {
-                            page.comps[compColumn.compIndex].name = text
-                            if (activeFocus) page.touched = true
+                        spacing: Theme.paddingSmall
+
+                        TextField {
+                            id: nameField
+                            width: parent.width
+                            label: qsTr("Exercise")
+                            placeholderText: qsTr("Exercise")
+                            color: FiatMosTheme.primaryText
+                            Component.onCompleted: text = page.comps[compColumn.compIndex].name
+                            onTextChanged: {
+                                page.comps[compColumn.compIndex].name = text
+                                if (activeFocus) page.touched = true
+                                suggestions.term = text
+                            }
+                            EnterKey.iconSource: "image://theme/icon-m-enter-close"
+                            EnterKey.onClicked: {
+                                focus = false
+                                page.settleName(compColumn.compIndex)
+                                page.renamingIndex = -1
+                                page.bump()
+                            }
                         }
-                        EnterKey.iconSource: "image://theme/icon-m-enter-close"
-                        EnterKey.onClicked: {
-                            focus = false
-                            page.renamingIndex = -1
-                            page.bump()
+
+                        Flow {
+                            id: suggestions
+                            property string term: ""
+                            x: Theme.horizontalPageMargin
+                            width: parent.width - Theme.horizontalPageMargin * 2
+                            spacing: Theme.paddingSmall
+                            visible: page.kindId >= 0 && sugRepeater.count > 0
+
+                            Repeater {
+                                id: sugRepeater
+                                model: {
+                                    var _g = page.gen
+                                    if (page.kindId < 0 || page.renamingIndex !== compColumn.compIndex) return []
+                                    var list = Storage.thingSuggestions(page.kindId, suggestions.term, 8)
+                                    // Not what is already in today's session.
+                                    var inUse = {}
+                                    for (var i = 0; i < page.comps.length; i++) {
+                                        if (i === compColumn.compIndex) continue
+                                        inUse[(page.comps[i].name || "").trim().toLowerCase()] = true
+                                    }
+                                    var out = []
+                                    for (var j = 0; j < list.length; j++) {
+                                        if (!inUse[list[j].title.toLowerCase()]) out.push(list[j])
+                                    }
+                                    return out
+                                }
+                                Pill {
+                                    multi: true
+                                    text: modelData.title
+                                    onClicked: {
+                                        page.comps[compColumn.compIndex].name = modelData.title
+                                        page.comps[compColumn.compIndex].measure = modelData.measure
+                                        nameField.text = modelData.title
+                                        nameField.focus = false
+                                        page.touched = true
+                                        page.renamingIndex = -1
+                                        page.bump()
+                                    }
+                                }
+                            }
+                        }
+
+                        Flow {
+                            x: Theme.horizontalPageMargin
+                            width: parent.width - Theme.horizontalPageMargin * 2
+                            spacing: Theme.paddingSmall
+
+                            Label {
+                                height: Theme.itemSizeExtraSmall
+                                verticalAlignment: Text.AlignVCenter
+                                text: qsTr("measured in")
+                                font.pixelSize: Theme.fontSizeExtraSmall
+                                color: FiatMosTheme.secondaryText
+                            }
+
+                            Repeater {
+                                model: Measures.choices()
+                                Pill {
+                                    text: modelData.label
+                                    selected: page.measureOf(compColumn.compIndex) === modelData.value
+                                    onClicked: {
+                                        page.comps[compColumn.compIndex].measure = modelData.value
+                                        page.comps[compColumn.compIndex].measurePicked = true
+                                        page.touched = true
+                                        page.bump()
+                                    }
+                                }
+                            }
+                        }
+
+                        ActionWord {
+                            x: Theme.horizontalPageMargin - Theme.paddingMedium
+                            text: qsTr("done")
+                            onClicked: {
+                                nameField.focus = false
+                                page.settleName(compColumn.compIndex)
+                                page.renamingIndex = -1
+                                page.bump()
+                            }
                         }
                     }
 
@@ -652,17 +820,20 @@ Page {
                                             model: {
                                                 var _g = page.gen
                                                 var d = setWrap.detail()
-                                                if (page.profile === "strength")
-                                                    return [{ v: d.reps, u: qsTr("Reps") }, { v: d.weight, u: qsTr("kg") }]
-                                                if (page.profile === "reps")
-                                                    return [{ v: d.reps, u: qsTr("Reps") }]
-                                                if (page.profile === "timed")
-                                                    return [{ v: d.minutes, u: qsTr("Minutes") }]
-                                                return [{ v: d.note, u: qsTr("Note") }]
+                                                var m = page.measureOf(compColumn.compIndex)
+                                                var out
+                                                if (m === "time")
+                                                    out = [{ v: d.minutes, u: qsTr("Minutes") }]
+                                                else if (m === "time_distance")
+                                                    out = [{ v: d.minutes, u: qsTr("Minutes") }, { v: d.km, u: qsTr("km") }]
+                                                else
+                                                    out = [{ v: d.reps, u: qsTr("Reps") }, { v: d.weight, u: qsTr("kg") }]
+                                                if ((d.note || "") !== "") out.push({ v: d.note, u: qsTr("Note") })
+                                                return out
                                             }
 
                                             Column {
-                                                width: (cardColumn.width - Theme.itemSizeExtraSmall / 2 - Theme.paddingLarge * 2) / 2
+                                                width: (cardColumn.width - Theme.itemSizeExtraSmall / 2 - Theme.paddingLarge * 3) / 3
                                                 Label {
                                                     width: parent.width
                                                     truncationMode: TruncationMode.Fade
@@ -680,6 +851,8 @@ Page {
                                     }
 
                                     // -- editing the set ----------------------
+                                    // The fields the thing's measure asks for,
+                                    // then a note, which every set may have.
                                     Row {
                                         width: parent.width
                                         spacing: Theme.paddingSmall
@@ -687,7 +860,7 @@ Page {
 
                                         TextField {
                                             width: (parent.width - Theme.paddingSmall) / 2
-                                            visible: page.profile === "strength" || page.profile === "reps"
+                                            visible: page.measureOf(compColumn.compIndex) === "weight_reps"
                                             label: qsTr("Reps")
                                             placeholderText: qsTr("Reps")
                                             inputMethodHints: Qt.ImhDigitsOnly
@@ -703,7 +876,7 @@ Page {
 
                                         TextField {
                                             width: (parent.width - Theme.paddingSmall) / 2
-                                            visible: page.profile === "strength"
+                                            visible: page.measureOf(compColumn.compIndex) === "weight_reps"
                                             label: qsTr("kg")
                                             placeholderText: qsTr("kg")
                                             inputMethodHints: Qt.ImhFormattedNumbersOnly
@@ -718,8 +891,9 @@ Page {
                                         }
 
                                         TextField {
-                                            width: parent.width
-                                            visible: page.profile === "timed"
+                                            width: page.measureOf(compColumn.compIndex) === "time_distance"
+                                                   ? (parent.width - Theme.paddingSmall) / 2 : parent.width
+                                            visible: page.measureOf(compColumn.compIndex) !== "weight_reps"
                                             label: qsTr("Minutes")
                                             placeholderText: qsTr("Minutes")
                                             inputMethodHints: Qt.ImhFormattedNumbersOnly
@@ -734,19 +908,35 @@ Page {
                                         }
 
                                         TextField {
-                                            width: parent.width
-                                            visible: page.profile === "free"
-                                            label: qsTr("Note")
-                                            placeholderText: qsTr("Note")
+                                            width: (parent.width - Theme.paddingSmall) / 2
+                                            visible: page.measureOf(compColumn.compIndex) === "time_distance"
+                                            label: qsTr("km")
+                                            placeholderText: qsTr("km")
+                                            inputMethodHints: Qt.ImhFormattedNumbersOnly
                                             color: FiatMosTheme.primaryText
-                                            Component.onCompleted: text = setWrap.detail().note
+                                            Component.onCompleted: text = setWrap.detail().km
                                             onTextChanged: {
-                                                setWrap.detail().note = text
+                                                setWrap.detail().km = text
                                                 if (activeFocus) page.touched = true
                                             }
                                             EnterKey.iconSource: "image://theme/icon-m-enter-close"
                                             EnterKey.onClicked: focus = false
                                         }
+                                    }
+
+                                    TextField {
+                                        width: parent.width
+                                        visible: setWrap.editingThis
+                                        label: qsTr("Note (optional)")
+                                        placeholderText: qsTr("Note")
+                                        color: FiatMosTheme.primaryText
+                                        Component.onCompleted: text = setWrap.detail().note
+                                        onTextChanged: {
+                                            setWrap.detail().note = text
+                                            if (activeFocus) page.touched = true
+                                        }
+                                        EnterKey.iconSource: "image://theme/icon-m-enter-close"
+                                        EnterKey.onClicked: focus = false
                                     }
 
                                     BackgroundItem {
@@ -832,7 +1022,7 @@ Page {
                 wrapMode: Text.WordWrap
                 font.pixelSize: Theme.fontSizeExtraSmall
                 color: FiatMosTheme.secondaryText
-                text: qsTr("Tap a set to edit it, swipe it left to delete — you get a few seconds to change your mind. Press and hold an exercise name for rename, duplicate and delete.")
+                text: qsTr("Tap a name to change it or how it is measured. Tap a set to edit it, swipe it left to delete — you get a few seconds to change your mind. Press and hold a name for duplicate and delete.")
             }
 
             // -- Save as routine ----------------------------------------------
@@ -841,8 +1031,8 @@ Page {
                 id: routineNameField
                 width: parent.width
                 visible: page.routineId < 0
-                label: qsTr("Save as routine (optional)")
-                placeholderText: qsTr("Name this routine to reuse it")
+                label: qsTr("Save as program (optional)")
+                placeholderText: qsTr("Name this session to start from it again")
                 color: FiatMosTheme.primaryText
                 onTextChanged: if (activeFocus) page.touched = true
                 EnterKey.iconSource: "image://theme/icon-m-enter-close"

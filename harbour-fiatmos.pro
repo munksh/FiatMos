@@ -86,6 +86,9 @@ DISTFILES += \
     qml/pages/LookupServicesPage.qml \
     qml/pages/ItemPage.qml \
     qml/pages/TagPickerPage.qml \
+    qml/pages/PracticePage.qml \
+    qml/pages/ThingPage.qml \
+    qml/pages/ThingDialog.qml \
     rpm/harbour-fiatmos.spec
 
 SAILFISHAPP_ICONS = 86x86 108x108 128x128 172x172

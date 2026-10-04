@@ -19,7 +19,7 @@ function makeTx() { return { executeSql(sql, params) {
 const fakeDb = { transaction: cb => cb(makeTx()), readTransaction: cb => cb(makeTx()) }
 const sb = { LS: { LocalStorage: { openDatabaseSync: () => fakeDb } }, console: { log(){} }, Date, Math, parseInt, parseFloat, isNaN, JSON, Number, String }
 vm.createContext(sb)
-vm.runInContext(src + ';globalThis.__S={init,MIGRATIONS,currentVersion,addHabit,getHabit,lastSession,sessionForDay,saveSession,kinds,kindById,addKind,starterKinds,STARTER_KINDS,items,itemById,addItem,things,thingDays,thingStats,dayFacts,setSummary,lastTimeFor,thingSuggestions,loadThings,addThing,updateThing,hasShelf,hasPractice,programs,addRoutine,exportAll,importAll,dayKey,addDays,dayOffsetKey,entriesSince,MEASURES,cleanMeasure,addReferenceEntry,itemsForHabit,kindStats}', sb)
+vm.runInContext(src + ';globalThis.__S={init,MIGRATIONS,currentVersion,addHabit,getHabit,lastSession,sessionForDay,saveSession,kinds,kindById,addKind,starterKinds,STARTER_KINDS,items,itemById,addItem,things,thingDays,thingStats,dayFacts,setSummary,lastTimeFor,thingSuggestions,thingIdByName,loadThings,addThing,updateThing,hasShelf,hasPractice,programs,addRoutine,exportAll,importAll,dayKey,addDays,dayOffsetKey,entriesSince,MEASURES,cleanMeasure,addReferenceEntry,itemsForHabit,kindStats}', sb)
 const S = sb.__S
 
 let fails = 0
@@ -193,6 +193,8 @@ ok('stats: unit is kg', st.unit === 'kg')
 const lt = S.lastTimeFor(gym.kindId, 'BENCH PRESS (barbell)', day(0))
 ok('last time before today, found by name', lt !== null && lt.day === day(-30) && lt.summary === '8 × 60, 6 × 65 kg', lt)
 ok('last time for an unknown name is nothing', S.lastTimeFor(gym.kindId, 'Clean and jerk', day(0)) === null)
+ok('a thing is found by name in any case', S.thingIdByName(gym.kindId, ' SQUAT ') === th.find(t => t.title === 'Squat').id)
+ok('and an unknown name is -1', S.thingIdByName(gym.kindId, 'Snatch') === -1)
 ok('suggestions start with what is typed', S.thingSuggestions(gym.kindId, 'pl')[0].title === 'Plank')
 ok('suggestions also match inside a name', S.thingSuggestions(gym.kindId, 'walk').some(t => t.title === 'Farmer walk'))
 
