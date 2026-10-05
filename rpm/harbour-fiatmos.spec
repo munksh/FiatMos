@@ -101,11 +101,15 @@ DeveloperName: Munkstolen
 Categories:
  - Utility
  - Office
-PackageIcon: https://munkstolen.se/SFOS/fiat-mos/harbour-fiatmos.png
+PackageIcon: https://munkstolen.se/SFOS/harbour-fiatmos.png
 Screenshots:
- - https://munkstolen.se/SFOS/fiat-mos/fiat-mos1.png
- - https://munkstolen.se/SFOS/fiat-mos/fiat-mos2.png
- - https://munkstolen.se/SFOS/fiat-mos/fiat-mos3.png
+ - https://munkstolen.se/SFOS/fiatmos1.png
+ - https://munkstolen.se/SFOS/fiatmos2.png
+ - https://munkstolen.se/SFOS/fiatmos3.png
+ - https://munkstolen.se/SFOS/fiatmos4.png
+ - https://munkstolen.se/SFOS/fiatmos5.png
+ - https://munkstolen.se/SFOS/fiatmos6.png
+ - https://munkstolen.se/SFOS/fiatmos7.png
 Custom:
   Repo: https://github.com/munksh/FiatMos
 Links:

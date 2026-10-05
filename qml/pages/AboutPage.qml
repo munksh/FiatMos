@@ -259,9 +259,9 @@ Page {
                     { name: "fiat ratio", what: qsTr("let there be reckoning — a budget tool"), icon: "images/family/harbour-fiatratio.png", url: "https://openrepos.net/content/munkstolen/fiat-ratio-budget-tool" }
                 ]
 
-                // Ratio's row: a full-size icon in a row of its own height,
-                // rather than an icon shrunk to the height of two lines of
-                // text. The icon is the app's face; it should be readable.
+                // A full-size icon in a row of its own height, rather than an
+                // icon shrunk to the height of two lines of text. The icon is
+                // the app's face; it should be readable.
                 delegate: BackgroundItem {
                     width: content.width
                     height: Theme.itemSizeMedium
