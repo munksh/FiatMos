@@ -359,7 +359,7 @@ Page {
                             text: {
                                 var p = programRow.program
                                 var parts = [p.habitName]
-                                parts.push(p.sessions === 1 ? qsTr("1 session") : qsTr("%1 sessions").arg(p.sessions))
+                                parts.push(p.sessions === 1 ? qsTr("1 workout") : qsTr("%1 workouts").arg(p.sessions))
                                 if (p.last !== "") parts.push(qsTr("last %1").arg(page.dayLabel(p.last)))
                                 return parts.join(" · ")
                             }
@@ -374,7 +374,7 @@ Page {
                 wrapMode: Text.WordWrap
                 font.pixelSize: Theme.fontSizeExtraSmall
                 color: FiatMosTheme.secondaryText
-                text: qsTr("Tap a program to start a session from it, with last time's sets filled in.")
+                text: qsTr("Tap a program to start a workout from it, with last time's sets filled in.")
             }
 
             Item { width: 1; height: Theme.paddingLarge }
@@ -390,7 +390,7 @@ Page {
         enabled: thingModel.count === 0
         text: qsTr("No exercises yet")
         hintText: page.kindId < 0
-            ? qsTr("A Work out habit adds its exercises here as you log sessions.")
-            : qsTr("Exercises appear here as your sessions name them. Pull down to add one now.")
+            ? qsTr("A Work out habit adds its exercises here as you log workouts.")
+            : qsTr("Exercises appear here as your workouts name them. Pull down to add one now.")
     }
 }

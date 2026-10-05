@@ -160,7 +160,7 @@ Page {
                 text: {
                     var _g = page.gen
                     if (page.st === null) return ""
-                    if (page.st.count === 0) return qsTr("Not done yet. Its history starts with the first session that includes it.")
+                    if (page.st.count === 0) return qsTr("Not done yet. Its history starts with the first workout that includes it.")
                     return page.headline()
                 }
             }

@@ -314,5 +314,17 @@ ok('the week has seven days', wk.days.length === 7)
 ok('today has a workout', wk.days[wk.todayIndex] === true, wk)
 ok('this week counts workouts, not saves', wk.thisWeek >= 1, wk)
 
+
+// A workout without a program starts from the last one without a program.
+const run = S.addHabit({ name: 'Running', valueType: 'structured', frequency: 'daily' })
+const legs = S.addRoutine(run, 'Hills')
+S.saveSession(S.getHabit(run), null, [{ name: 'Run', measure: 'time_distance', details: [{ duration: 1920, distance: 5200 }] }], '', day(-3))
+S.saveSession(S.getHabit(run), legs, [{ name: 'Hill sprints', measure: 'time', details: [{ duration: 600 }] }], '', day(-1))
+const free = S.lastSession(run, -1)
+ok('the last workout without a program is found past a later program', free !== null && free.components[0].name === 'Run', free)
+ok('it has no program', free.routineId === null || free.routineId === undefined || free.routineId < 0, free.routineId)
+ok('the last of all is still the program', S.lastSession(run, null).routineId === legs)
+ok('a habit with no free workout gives none', S.lastSession(S.addHabit({ name: 'Swim', valueType: 'structured', frequency: 'daily' }), -1) === null)
+
 console.log(fails === 0 ? '\nALL PASS' : '\n' + fails + ' FAILURES')
 process.exit(fails ? 1 : 0)

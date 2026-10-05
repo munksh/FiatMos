@@ -1648,7 +1648,8 @@ function todaysSession(habitId) {
     return sessionForDay(habitId, dayKey(new Date()))
 }
 
-// The most recent session for a habit, optionally restricted to one routine.
+// The most recent session for a habit, optionally restricted to one routine,
+// or with a negative routineId to the ones without a routine.
 // Used both for the history view and for prefilling a new session --
 // prefill lives in UI state only, nothing is copied into the database.
 function lastSession(habitId, routineId) {
@@ -1657,6 +1658,8 @@ function lastSession(habitId, routineId) {
         var r
         if (routineId === null || routineId === undefined) {
             r = tx.executeSql("SELECT * FROM session WHERE habit_id = ? ORDER BY started_at DESC, id DESC LIMIT 1", [habitId])
+        } else if (routineId < 0) {
+            r = tx.executeSql("SELECT * FROM session WHERE habit_id = ? AND routine_id IS NULL ORDER BY started_at DESC, id DESC LIMIT 1", [habitId])
         } else {
             r = tx.executeSql("SELECT * FROM session WHERE habit_id = ? AND routine_id = ? ORDER BY started_at DESC, id DESC LIMIT 1", [habitId, routineId])
         }

@@ -133,13 +133,38 @@ Page {
         renamingIndex = -1
         editingSet = ""
         pendingSet = ""
-        var s = (id < 0) ? null : Storage.lastSession(habitId, id)
+        if (id < 0) {
+            startFree()
+            return
+        }
+        var s = Storage.lastSession(habitId, id)
         var next = []
         if (s !== null) {
             for (var i = 0; i < s.components.length; i++) {
                 next.push({ name: s.components[i].name, measure: s.components[i].measure,
                             details: fromStored(s.components[i].details) })
             }
+        }
+        comps = next
+        bump()
+    }
+
+    // A workout without a program starts from the exercises of the last one
+    // without a program -- the names and how each is measured, never the
+    // numbers. Last time's numbers stand under each name instead.
+    function startFree() {
+        routineId = -1
+        var s = Storage.lastSession(habitId, -1)
+        var next = []
+        if (s !== null) {
+            for (var i = 0; i < s.components.length; i++) {
+                next.push({ name: s.components[i].name, measure: s.components[i].measure,
+                            details: [emptyDetail()] })
+            }
+        }
+        if (next.length === 0) {
+            next.push({ name: "", measure: page.defaultMeasure, details: [emptyDetail()] })
+            renamingIndex = 0
         }
         comps = next
         bump()
@@ -296,10 +321,7 @@ Page {
             if (last !== null && last.routineId !== null && last.routineId !== undefined) {
                 selectRoutine(last.routineId)
             } else {
-                routineId = -1
-                comps = [{ name: "", measure: page.defaultMeasure, details: [emptyDetail()] }]
-                renamingIndex = 0
-                bump()
+                startFree()
             }
         }
         // Only the first day the page opens on; switching days is your own
@@ -365,7 +387,12 @@ Page {
             highlightColor: FiatMosTheme.accent
 
             MenuItem {
-                text: qsTr("Past sessions")
+                text: qsTr("Workouts")
+                color: FiatMosTheme.primaryText
+                onClicked: pageStack.animatorPush(Qt.resolvedUrl("PracticePage.qml"))
+            }
+            MenuItem {
+                text: qsTr("Past workouts")
                 color: FiatMosTheme.primaryText
                 onClicked: pageStack.animatorPush(Qt.resolvedUrl("HistoryPage.qml"), { habitId: page.habitId })
             }
@@ -389,8 +416,8 @@ Page {
                 // Says which of the two things is happening, because the page
                 // looks identical either way and the difference matters.
                 subtitle: {
-                    if (page.dayOffset === 0) return page.continuing ? qsTr("today's session") : qsTr("new session")
-                    return page.continuing ? qsTr("yesterday's session") : qsTr("new session for yesterday")
+                    if (page.dayOffset === 0) return page.continuing ? qsTr("today's workout") : qsTr("new workout")
+                    return page.continuing ? qsTr("yesterday's workout") : qsTr("new workout for yesterday")
                 }
             }
 
@@ -420,6 +447,7 @@ Page {
 
             SectionLabel {
                 x: Theme.horizontalPageMargin
+                visible: page.routineList.length > 0
                 text: qsTr("Program")
             }
 
@@ -427,9 +455,10 @@ Page {
                 x: Theme.horizontalPageMargin
                 width: parent.width - Theme.horizontalPageMargin * 2
                 spacing: Theme.paddingSmall
+                visible: page.routineList.length > 0
 
                 Pill {
-                    text: qsTr("Free session")
+                    text: qsTr("none")
                     selected: page.routineId < 0
                     onClicked: page.selectRoutine(-1)
                 }
@@ -451,10 +480,15 @@ Page {
                 font.pixelSize: Theme.fontSizeExtraSmall
                 color: FiatMosTheme.secondaryText
                 visible: page.routineId >= 0
-                text: qsTr("Prefilled from your last session with this program. Change whatever you like — the old session is untouched.")
+                text: qsTr("Filled in from the last time you did this program. Change whatever you like — that workout is untouched.")
             }
 
             // -- Exercises ----------------------------------------------------
+
+            SectionLabel {
+                x: Theme.horizontalPageMargin
+                text: qsTr("Exercises")
+            }
 
             Repeater {
                 model: page.comps.length
@@ -546,8 +580,8 @@ Page {
                         TextField {
                             id: nameField
                             width: parent.width
-                            label: qsTr("Name")
-                            placeholderText: qsTr("Name")
+                            label: qsTr("Exercise")
+                            placeholderText: qsTr("e.g. Squat")
                             color: FiatMosTheme.primaryText
                             Component.onCompleted: text = page.comps[compColumn.compIndex].name
                             onTextChanged: {
@@ -1034,7 +1068,7 @@ Page {
                 width: parent.width
                 visible: page.routineId < 0
                 label: qsTr("Save as program (optional)")
-                placeholderText: qsTr("Name this session to start from it again")
+                placeholderText: qsTr("Name it to start from it again")
                 color: FiatMosTheme.primaryText
                 onTextChanged: if (activeFocus) page.touched = true
                 EnterKey.iconSource: "image://theme/icon-m-enter-close"
@@ -1044,7 +1078,7 @@ Page {
             TextField {
                 id: sessionNoteField
                 width: parent.width
-                label: qsTr("Session note (optional)")
+                label: qsTr("Note (optional)")
                 placeholderText: qsTr("How did it go?")
                 color: FiatMosTheme.primaryText
                 onTextChanged: if (activeFocus) page.touched = true
@@ -1070,7 +1104,7 @@ Page {
             // It is how you say the workout is over.
             text: {
                 if (page.dayOffset !== 0) return qsTr("Save for %1").arg(page.weekday(page.day))
-                return page.continuing ? qsTr("Finish session") : qsTr("Save session")
+                return page.continuing ? qsTr("Finish workout") : qsTr("Save workout")
             }
             enabled: {
                 var _g = page.gen

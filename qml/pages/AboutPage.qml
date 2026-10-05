@@ -38,7 +38,7 @@ Page {
                 font.pixelSize: Theme.fontSizeMedium
                 font.family: FiatMosTheme.serif
                 color: FiatMosTheme.primaryText
-                text: qsTr("Flossing is yes or no. Running is a number. A gym session is a whole page of its own.")
+                text: qsTr("Flossing is yes or no. Running is a number. A workout is a whole page of its own.")
             }
 
             Label {
@@ -47,7 +47,7 @@ Page {
                 wrapMode: Text.WordWrap
                 font.pixelSize: Theme.fontSizeExtraSmall
                 color: FiatMosTheme.secondaryText
-                text: qsTr("Most habit trackers pick one of those shapes and make everything else fit it. Fiat Mos lets every habit be its own size — a tick, a number with a unit, a rating on a scale you invent, something you work through piece by piece, or a full session with exercises and sets. Nothing gets padded out, and nothing gets squeezed.")
+                text: qsTr("Most habit trackers pick one of those shapes and make everything else fit it. Fiat Mos lets every habit be its own size — a tick, a number with a unit, a rating on a scale you invent, something you work through piece by piece, or a workout with exercises and sets. Nothing gets padded out, and nothing gets squeezed.")
             }
 
             // -- The name --------------------------------------------------

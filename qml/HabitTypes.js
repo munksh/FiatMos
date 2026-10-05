@@ -32,9 +32,9 @@ function list() {
         // "Work out", not "Work it out": that one means solving a problem.
         { key: "structured", title: qsTr("Work out"),
           examples: qsTr("Gym, rehab, stretching, climbing."),
-          gets: [qsTr("A session of exercises, each with its sets, minutes or distance."),
+          gets: [qsTr("A workout of exercises, each with its sets, minutes or distance."),
                  qsTr("Last time is shown beside today, so you know what to aim for."),
                  qsTr("Each exercise keeps its own history under Workouts: heavier, longer, steadier."),
-                 qsTr("Save a session as a program and start from it next time.")] }
+                 qsTr("Save a workout as a program and start from it next time.")] }
     ]
 }

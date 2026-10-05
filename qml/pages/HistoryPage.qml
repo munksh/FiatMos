@@ -561,7 +561,7 @@ Page {
             SectionLabel {
                 x: Theme.horizontalPageMargin
                 visible: sessionModel.count > 0
-                text: qsTr("Sessions")
+                text: qsTr("Workouts")
             }
 
             Repeater {
@@ -582,7 +582,7 @@ Page {
 
                     Label {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: model.routineName === "" ? qsTr("Free session") : model.routineName
+                        text: model.routineName === "" ? qsTr("No program") : model.routineName
                         color: FiatMosTheme.primaryText
                         font.pixelSize: Theme.fontSizeSmall
                         truncationMode: TruncationMode.Fade
