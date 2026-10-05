@@ -14,20 +14,36 @@ Page {
     id: page
 
     property int filterIndex: 0        // 0 on the go, 1 finished, 2 all
-    property string tagFilter: ""
+    property var tagsChosen: []
+    property bool tagsOpen: false
+    property var tagChoices: []
     property int kindFilter: -1
     property var tags: []
     property var kindList: []
 
     function filter() {
-        var f = { includePrivate: true, tag: page.tagFilter, kindId: page.kindFilter, nature: "finish" }
+        var f = { includePrivate: true, tags: page.tagsChosen, kindId: page.kindFilter, nature: "finish" }
         if (filterIndex === 0) f.active = true
         else if (filterIndex === 1) f.active = false
         return f
     }
 
+    function toggleTag(t) {
+        var next = []
+        var had = false
+        for (var i = 0; i < tagsChosen.length; i++) {
+            if (tagsChosen[i] === t) had = true
+            else next.push(tagsChosen[i])
+        }
+        if (!had) next.push(t)
+        tagsChosen = next
+    }
+
     function reload() {
         tags = Storage.allTags()
+        var f = filter()
+        f.tags = []
+        tagChoices = Storage.tagChoices(f, tagsChosen)
         kindList = Storage.kinds({ nature: "finish" })
         Storage.loadItems(itemModel, filter())
     }
@@ -45,7 +61,7 @@ Page {
     }
 
     onFilterIndexChanged: reload()
-    onTagFilterChanged: reload()
+    onTagsChosenChanged: reload()
     onKindFilterChanged: reload()
 
     // Fiat colours paint their own paper. Under an ambience there is no
@@ -126,19 +142,53 @@ Page {
 
             // Tag filter. Tags are invented as you go and soon outnumber what
             // a row of words can hold, so the choice is a row of its own that
-            // opens a list.
+            // opens downward. Each tag you choose narrows the list below; the
+            // number beside a tag is what you would be left with if you chose
+            // it too, and a tag that would leave nothing is dimmed -- so you
+            // can see at once whether the filter is enough or there is more to
+            // choose.
             ValueRow {
                 width: listView.width
                 visible: page.tags.length > 0
                 label: qsTr("Tag")
-                value: page.tagFilter === "" ? qsTr("any") : page.tagFilter
-                onClicked: {
-                    var op = pageStack.animatorPush(Qt.resolvedUrl("TagPickerPage.qml"), { current: page.tagFilter })
-                    if (op === null || op === undefined) return
-                    if (op.pageCompleted !== undefined) {
-                        op.pageCompleted.connect(function(p) { p.tagPicked.connect(function(t) { page.tagFilter = t }) })
-                    } else if (op.tagPicked !== undefined) {
-                        op.tagPicked.connect(function(t) { page.tagFilter = t })
+                value: page.tagsChosen.length === 0 ? qsTr("any") : page.tagsChosen.join(" + ")
+                onClicked: page.tagsOpen = !page.tagsOpen
+            }
+
+            Column {
+                width: listView.width
+                visible: page.tagsOpen && page.tags.length > 0
+
+                Repeater {
+                    model: page.tagChoices.length
+
+                    BackgroundItem {
+                        width: listView.width
+                        height: Theme.itemSizeExtraSmall
+                        highlightedColor: FiatMosTheme.highlightWash
+                        readonly property var choice: page.tagChoices[index]
+                        opacity: (choice.count === 0 && !choice.chosen) ? 0.35 : 1.0
+                        onClicked: page.toggleTag(choice.tag)
+
+                        Label {
+                            anchors.verticalCenter: parent.verticalCenter
+                            x: Theme.horizontalPageMargin
+                            width: parent.width - Theme.horizontalPageMargin * 2 - countLabel.width - Theme.paddingMedium
+                            truncationMode: TruncationMode.Fade
+                            text: parent.choice.tag
+                            font.bold: parent.choice.chosen
+                            color: (parent.highlighted || parent.choice.chosen) ? FiatMosTheme.accent : FiatMosTheme.primaryText
+                        }
+                        Label {
+                            id: countLabel
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.right: parent.right
+                            anchors.rightMargin: Theme.horizontalPageMargin
+                            font.pixelSize: Theme.fontSizeExtraSmall
+                            font.bold: parent.choice.chosen
+                            color: parent.choice.chosen ? FiatMosTheme.accent : FiatMosTheme.secondaryText
+                            text: String(parent.choice.count)
+                        }
                     }
                 }
             }
@@ -320,8 +370,8 @@ Page {
     EmptyNote {
         enabled: itemModel.count === 0
         text: page.filterIndex === 1 ? qsTr("Nothing done yet") : qsTr("Nothing here")
-        hintText: page.tagFilter !== ""
-            ? qsTr("No items tagged %1").arg(page.tagFilter)
+        hintText: page.tagsChosen.length > 0
+            ? qsTr("No items tagged %1").arg(page.tagsChosen.join(" + "))
             : qsTr("Pull down to add something you are working through")
     }
 }

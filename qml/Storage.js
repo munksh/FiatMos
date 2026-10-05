@@ -1103,6 +1103,13 @@ function items(filter) {
             args.push(filter.tag)
         }
         sql += " WHERE 1 = 1"
+        // Several tags narrow: an item must have every one of them.
+        if (filter.tags !== undefined) {
+            for (var g = 0; g < filter.tags.length; g++) {
+                sql += " AND EXISTS (SELECT 1 FROM item_tag tt WHERE tt.item_id = i.id AND tt.tag = ?)"
+                args.push(filter.tags[g])
+            }
+        }
         if (filter.kindId !== undefined && filter.kindId >= 0) {
             sql += " AND i.kind_id = ?"
             args.push(filter.kindId)
@@ -1210,6 +1217,35 @@ function allTags() {
         var r = tx.executeSql("SELECT tag, COUNT(*) AS n FROM item_tag GROUP BY tag ORDER BY n DESC, tag")
         for (var i = 0; i < r.rows.length; i++) out.push(r.rows.item(i).tag)
     })
+    return out
+}
+
+// The tags to offer while narrowing a list, each with how many items would be
+// left if it were chosen too -- 0 for the ones that would leave nothing.
+// `filter` is the list's own filter without its tags; `chosen` the tags
+// already picked. Most used first; a chosen tag counts the list as it is.
+// [{ tag, count, chosen }]
+function tagChoices(filter, chosen) {
+    var f = {}
+    for (var k in filter) f[k] = filter[k]
+    f.tags = chosen
+    var list = items(f)
+    var inSet = {}
+    for (var i = 0; i < list.length; i++) inSet[list[i].id] = true
+    var counts = {}
+    db().readTransaction(function(tx) {
+        var r = tx.executeSql("SELECT item_id, tag FROM item_tag")
+        for (var j = 0; j < r.rows.length; j++) {
+            var row = r.rows.item(j)
+            if (inSet[row.item_id]) counts[row.tag] = (counts[row.tag] || 0) + 1
+        }
+    })
+    var out = []
+    var all = allTags()
+    for (var t = 0; t < all.length; t++) {
+        var isOn = chosen.indexOf(all[t]) >= 0
+        out.push({ tag: all[t], count: isOn ? list.length : (counts[all[t]] || 0), chosen: isOn })
+    }
     return out
 }
 
