@@ -167,6 +167,9 @@ desktop-file-install --delete-original \
   Programs have pages of their own under Workouts.
 - Time is written in hours, minutes and seconds - the two or three fields
   you choose - for sleep, sets and everything else measured in time.
+- On the Shelf the tag row opens downward. Each tag you choose narrows the
+  list, and the number beside a tag is what you would have left if you
+  chose it too.
 - Your data is kept. Habits that were on the shelf stay on the shelf; the
   upgrade only adds. Backups now carry exercises and their measures, and
   backups made by earlier versions still import.
