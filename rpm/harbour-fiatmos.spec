@@ -162,6 +162,11 @@ desktop-file-install --delete-original \
 - The workout page says workout, not session. Its pull-down leads to
   Workouts, the exercises have a heading of their own, and a workout
   without a program starts from last time's exercises.
+- Programs are lists of exercises you can build before you run them.
+  Starting a workout from one shows last time's numbers, and Exercises and
+  Programs have pages of their own under Workouts.
+- Time is written in hours, minutes and seconds - the two or three fields
+  you choose - for sleep, sets and everything else measured in time.
 - Your data is kept. Habits that were on the shelf stay on the shelf; the
   upgrade only adds. Backups now carry exercises and their measures, and
   backups made by earlier versions still import.
