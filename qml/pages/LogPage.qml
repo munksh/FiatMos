@@ -3,6 +3,7 @@ import Sailfish.Silica 1.0
 import ".."
 import "../components"
 import "../Storage.js" as Storage
+import "../Durations.js" as Durations
 
 // Handles check, number, rating and reference habits. Structured habits get
 // their own page (SessionPage) -- HabitListPage routes them there directly.
@@ -49,14 +50,34 @@ Page {
         gen++
     }
 
+    // A time unit -- hours, minutes, seconds -- is written in time fields.
+    readonly property bool timeUnit: {
+        var _g = page.gen
+        return page.habit !== null && Durations.isTime(Storage.unitForHabit(page.habit))
+    }
+
+    // What was written as the amount, whichever way it was written.
+    function amountText() {
+        return page.timeUnit ? timeInput.value : numberField.text
+    }
+
+    // A value and its unit said as a person says it: 7 h 30 min for 450 min.
+    function withUnit(v, unit) {
+        var t = Durations.format(v, unit)
+        if (t !== "") return t
+        var n = Math.round(v * 100) / 100
+        return unit === "" ? String(n) : n + " " + unit
+    }
+
     function saveEntry() {
         if (habit === null) return
         var note = noteField.text.trim()
+        var typed = amountText()
 
         if (habit.valueType === "reference") {
             var amount = null
-            if (numberField.text.trim() !== "") {
-                var a = parseFloat(numberField.text.replace(",", "."))
+            if (typed.trim() !== "") {
+                var a = parseFloat(typed.replace(",", "."))
                 if (!isNaN(a)) amount = a
             }
             // Without a thing it is still a log: it counts toward the day and
@@ -70,7 +91,7 @@ Page {
         } else {
             var values = { note: note, loggedAt: Storage.loggedAtFor(page.day) }
             if (habit.valueType === "numeric") {
-                var parsed = parseFloat(numberField.text.replace(",", "."))
+                var parsed = parseFloat(typed.replace(",", "."))
                 if (isNaN(parsed)) return
                 values.numeric = parsed
             } else if (habit.valueType === "scale") {
@@ -81,6 +102,7 @@ Page {
         }
 
         numberField.text = ""
+        timeInput.setValue("")
         noteField.text = ""
         page.scaleValue = -1
         page.bookId = -1
@@ -214,12 +236,22 @@ Page {
 
             // -- Number (numeric habits, and the optional amount for books) ----
 
+            TimeInput {
+                id: timeInput
+                visible: page.timeUnit && page.habit !== null
+                         && (page.habit.valueType === "numeric" || page.habit.valueType === "reference")
+                unit: {
+                    var _g = page.gen
+                    return page.habit === null ? "min" : Storage.unitForHabit(page.habit)
+                }
+            }
+
             TextField {
                 id: numberField
                 width: parent.width
                 visible: {
                     var _g = page.gen
-                    if (page.habit === null) return false
+                    if (page.habit === null || page.timeUnit) return false
                     return page.habit.valueType === "numeric" || page.habit.valueType === "reference"
                 }
                 label: {
@@ -432,17 +464,14 @@ Page {
                                 if (page.habit === null) return ""
                                 if (page.habit.valueType === "boolean") return "✓"
                                 if (page.habit.valueType === "numeric") {
-                                    var v = Math.round(model.valueNumeric * 100) / 100
-                                    return page.habit.unit === "" ? v : v + " " + page.habit.unit
+                                    return page.withUnit(model.valueNumeric, page.habit.unit)
                                 }
                                 if (page.habit.valueType === "scale") {
                                     return model.valueScale + "/" + page.habit.scaleMax
                                 }
                                 if (page.habit.valueType === "reference") {
                                     if (!model.hasNumeric) return model.bookTitle
-                                    var a = Math.round(model.valueNumeric * 100) / 100
-                                    var u = Storage.unitForHabit(page.habit)
-                                    var amt = u === "" ? a : a + " " + u
+                                    var amt = page.withUnit(model.valueNumeric, Storage.unitForHabit(page.habit))
                                     return model.bookTitle === "" ? String(amt) : model.bookTitle + " · " + amt
                                 }
                                 return "✓"
@@ -488,7 +517,7 @@ Page {
                 var _g = page.gen
                 var _s = page.scaleValue
                 var _b = page.bookId
-                var _n = numberField.text
+                var _n = page.timeUnit ? timeInput.value : numberField.text
                 if (page.habit === null) return false
                 if (page.habit.valueType === "numeric") return _n.trim() !== ""
                 if (page.habit.valueType === "scale") return _s >= 0

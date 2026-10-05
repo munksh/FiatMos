@@ -3,6 +3,7 @@ import Sailfish.Silica 1.0
 import ".."
 import "../components"
 import "../Storage.js" as Storage
+import "../Durations.js" as Durations
 import "../Measures.js" as Measures
 
 // A Practise it habit: one session made of things, each made of sets.
@@ -118,7 +119,7 @@ Page {
             out.push({
                 reps: d.reps === null ? "" : String(d.reps),
                 weight: d.weight === null ? "" : String(d.weight),
-                minutes: d.duration === null ? "" : String(Math.round(d.duration / 6) / 10),
+                minutes: d.duration === null ? "" : String(Math.round(d.duration / 60 * 1000000) / 1000000),
                 km: (d.distance === null || d.distance === undefined) ? "" : String(Math.round(d.distance) / 1000),
                 note: d.note === null ? "" : d.note
             })
@@ -137,15 +138,76 @@ Page {
             startFree()
             return
         }
-        var s = Storage.lastSession(habitId, id)
+        // The program's exercises in order, each with the sets of the last
+        // time it was done -- those numbers are today's starting point.
+        var start = Storage.programStart(id, page.day)
         var next = []
-        if (s !== null) {
-            for (var i = 0; i < s.components.length; i++) {
-                next.push({ name: s.components[i].name, measure: s.components[i].measure,
-                            details: fromStored(s.components[i].details) })
-            }
+        for (var i = 0; i < start.length; i++) {
+            next.push({ name: start[i].name, measure: start[i].measure,
+                        details: fromStored(start[i].details) })
+        }
+        if (next.length === 0) {
+            // A program built but still empty: one blank exercise to name.
+            next.push({ name: "", measure: page.defaultMeasure, details: [emptyDetail()] })
+            renamingIndex = 0
         }
         comps = next
+        bump()
+    }
+
+    // Program helpers. An exercise typed into a workout is only in that
+    // workout until you add it to the program.
+    function programName() {
+        for (var i = 0; i < routineList.length; i++) if (routineList[i].id === routineId) return routineList[i].name
+        return ""
+    }
+
+    function exerciseItemId(c) {
+        if (kindId < 0 || comps[c] === undefined) return -1
+        var n = (comps[c].name || "").trim()
+        return n === "" ? -1 : Storage.thingIdByName(kindId, n)
+    }
+
+    function notInProgram(c) {
+        var _g = page.gen
+        if (routineId < 0 || comps[c] === undefined) return false
+        if ((comps[c].name || "").trim() === "") return false
+        var id = exerciseItemId(c)
+        return id < 0 || !Storage.programHasItem(routineId, id)
+    }
+
+    function addToProgram(c) {
+        if (routineId < 0) return
+        var id = exerciseItemId(c)
+        if (id < 0 && worthSaving()) {
+            // A brand new exercise exists once a workout has been saved with it.
+            save()
+            id = exerciseItemId(c)
+        }
+        if (id >= 0) Storage.addProgramItem(routineId, id)
+        routineList = Storage.routines(habitId)
+        bump()
+    }
+
+    property bool namingProgram: false
+    property bool programNameTaken: false
+
+    // Option A of the old question: the workout you just did becomes a
+    // program, from a row of its own -- not a field that looks like the name
+    // of the workout.
+    function saveAsProgram() {
+        var name = programNameField.text.trim()
+        if (name === "") return
+        if (Storage.programNameTaken(name, -1)) { programNameTaken = true; return }
+        programNameTaken = false
+        if (!worthSaving()) return
+        save()
+        var id = Storage.saveAsProgram(habitId, name, page.day)
+        if (id < 0) { programNameTaken = true; return }
+        routineList = Storage.routines(habitId)
+        routineId = id
+        namingProgram = false
+        programNameField.text = ""
         bump()
     }
 
@@ -247,11 +309,7 @@ Page {
             payload.push({ name: comps[i].name, measure: m, details: det })
         }
 
-        var rid = routineId
-        var newName = routineNameField.text.trim()
-        if (rid < 0 && newName !== "") rid = Storage.addRoutine(habitId, newName)
-
-        Storage.saveSession(habit, rid, payload, sessionNoteField.text.trim(), page.day)
+        Storage.saveSession(habit, routineId, payload, sessionNoteField.text.trim(), page.day)
         page.saved = true
         page.touched = false
         page.continuing = true
@@ -274,6 +332,11 @@ Page {
 
     property bool saved: false
 
+    function worthSavingNow() {
+        var _g = page.gen
+        return worthSaving()
+    }
+
     // Saving on the way out.
     //
     // This is only safe because a save now rewrites today's session instead of
@@ -281,8 +344,7 @@ Page {
     // nothing. It is what stops the habit of saving every few minutes "so as
     // not to lose it", which was never a feature, only a fear.
     //
-    // The Save button stays: it is how you say "this one is finished", and it
-    // is the only way to leave with a routine name you just typed.
+    // The Save button stays: it is how you say "this one is finished".
     function autosave() {
         if (habit === null) return
         if (!touched) return
@@ -480,7 +542,7 @@ Page {
                 font.pixelSize: Theme.fontSizeExtraSmall
                 color: FiatMosTheme.secondaryText
                 visible: page.routineId >= 0
-                text: qsTr("Filled in from the last time you did this program. Change whatever you like — that workout is untouched.")
+                text: qsTr("The exercises of this program, with the numbers from the last time. Change whatever you like — earlier workouts stay as they were.")
             }
 
             // -- Exercises ----------------------------------------------------
@@ -517,6 +579,12 @@ Page {
                                 text: qsTr("Rename or measure")
                                 color: FiatMosTheme.primaryText
                                 onClicked: page.renamingIndex = compColumn.compIndex
+                            }
+                            MenuItem {
+                                text: qsTr("Add to %1").arg(page.programName())
+                                color: FiatMosTheme.primaryText
+                                visible: page.notInProgram(compColumn.compIndex)
+                                onClicked: page.addToProgram(compColumn.compIndex)
                             }
                             MenuItem {
                                 text: qsTr("Duplicate exercise")
@@ -564,6 +632,15 @@ Page {
                                 font.pixelSize: Theme.fontSizeExtraSmall
                                 color: FiatMosTheme.secondaryText
                                 text: page.lastTimeText(compColumn.compIndex)
+                            }
+
+                            Label {
+                                width: parent.width
+                                visible: page.notInProgram(compColumn.compIndex)
+                                truncationMode: TruncationMode.Fade
+                                font.pixelSize: Theme.fontSizeExtraSmall
+                                color: FiatMosTheme.accent
+                                text: qsTr("only today · hold to add it to %1").arg(page.programName())
                             }
                         }
                     }
@@ -859,9 +936,9 @@ Page {
                                                 var m = page.measureOf(compColumn.compIndex)
                                                 var out
                                                 if (m === "time")
-                                                    out = [{ v: d.minutes, u: qsTr("Minutes") }]
+                                                    out = [{ v: Durations.format(d.minutes, "min"), u: qsTr("Time") }]
                                                 else if (m === "time_distance")
-                                                    out = [{ v: d.minutes, u: qsTr("Minutes") }, { v: d.km, u: qsTr("km") }]
+                                                    out = [{ v: Durations.format(d.minutes, "min"), u: qsTr("Time") }, { v: d.km, u: qsTr("km") }]
                                                 else
                                                     out = [{ v: d.reps, u: qsTr("Reps") }, { v: d.weight, u: qsTr("kg") }]
                                                 if ((d.note || "") !== "") out.push({ v: d.note, u: qsTr("Note") })
@@ -925,39 +1002,33 @@ Page {
                                             EnterKey.iconSource: "image://theme/icon-m-enter-close"
                                             EnterKey.onClicked: focus = false
                                         }
+                                    }
 
-                                        TextField {
-                                            width: page.measureOf(compColumn.compIndex) === "time_distance"
-                                                   ? (parent.width - Theme.paddingSmall) / 2 : parent.width
-                                            visible: page.measureOf(compColumn.compIndex) !== "weight_reps"
-                                            label: qsTr("Minutes")
-                                            placeholderText: qsTr("Minutes")
-                                            inputMethodHints: Qt.ImhFormattedNumbersOnly
-                                            color: FiatMosTheme.primaryText
-                                            Component.onCompleted: text = setWrap.detail().minutes
-                                            onTextChanged: {
-                                                setWrap.detail().minutes = text
-                                                if (activeFocus) page.touched = true
-                                            }
-                                            EnterKey.iconSource: "image://theme/icon-m-enter-close"
-                                            EnterKey.onClicked: focus = false
+                                    TimeInput {
+                                        width: parent.width
+                                        visible: setWrap.editingThis && page.measureOf(compColumn.compIndex) !== "weight_reps"
+                                        unit: "min"
+                                        Component.onCompleted: setValue(setWrap.detail().minutes)
+                                        onEdited: {
+                                            setWrap.detail().minutes = value
+                                            page.touched = true
                                         }
+                                    }
 
-                                        TextField {
-                                            width: (parent.width - Theme.paddingSmall) / 2
-                                            visible: page.measureOf(compColumn.compIndex) === "time_distance"
-                                            label: qsTr("km")
-                                            placeholderText: qsTr("km")
-                                            inputMethodHints: Qt.ImhFormattedNumbersOnly
-                                            color: FiatMosTheme.primaryText
-                                            Component.onCompleted: text = setWrap.detail().km
-                                            onTextChanged: {
-                                                setWrap.detail().km = text
-                                                if (activeFocus) page.touched = true
-                                            }
-                                            EnterKey.iconSource: "image://theme/icon-m-enter-close"
-                                            EnterKey.onClicked: focus = false
+                                    TextField {
+                                        width: parent.width
+                                        visible: setWrap.editingThis && page.measureOf(compColumn.compIndex) === "time_distance"
+                                        label: qsTr("km")
+                                        placeholderText: qsTr("km")
+                                        inputMethodHints: Qt.ImhFormattedNumbersOnly
+                                        color: FiatMosTheme.primaryText
+                                        Component.onCompleted: text = setWrap.detail().km
+                                        onTextChanged: {
+                                            setWrap.detail().km = text
+                                            if (activeFocus) page.touched = true
                                         }
+                                        EnterKey.iconSource: "image://theme/icon-m-enter-close"
+                                        EnterKey.onClicked: focus = false
                                     }
 
                                     TextField {
@@ -1061,18 +1132,38 @@ Page {
                 text: qsTr("Tap a name to change it or how it is measured. Tap a set to edit it, swipe it left to delete — you get a few seconds to change your mind. Press and hold a name for duplicate and delete.")
             }
 
-            // -- Save as routine ----------------------------------------------
+            // -- Save as program ----------------------------------------------
 
-            TextField {
-                id: routineNameField
-                width: parent.width
-                visible: page.routineId < 0
-                label: qsTr("Save as program (optional)")
-                placeholderText: qsTr("Name it to start from it again")
-                color: FiatMosTheme.primaryText
-                onTextChanged: if (activeFocus) page.touched = true
-                EnterKey.iconSource: "image://theme/icon-m-enter-close"
-                EnterKey.onClicked: focus = false
+            ValueRow {
+                width: content.width
+                visible: page.routineId < 0 && !page.namingProgram && page.worthSavingNow()
+                label: qsTr("Save as program")
+                value: qsTr("start from this list next time")
+                onClicked: page.namingProgram = true
+            }
+
+            Row {
+                x: Theme.horizontalPageMargin
+                width: content.width - Theme.horizontalPageMargin * 2
+                visible: page.routineId < 0 && page.namingProgram
+                spacing: Theme.paddingSmall
+
+                TextField {
+                    id: programNameField
+                    width: parent.width - saveProgramWord.width - Theme.paddingSmall
+                    label: page.programNameTaken ? qsTr("Already a program with that name") : qsTr("Program name")
+                    placeholderText: qsTr("Push day, Legs…")
+                    color: FiatMosTheme.primaryText
+                    EnterKey.iconSource: "image://theme/icon-m-enter-accept"
+                    EnterKey.onClicked: page.saveAsProgram()
+                }
+
+                ActionWord {
+                    id: saveProgramWord
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: qsTr("Save")
+                    onClicked: page.saveAsProgram()
+                }
             }
 
             TextField {

@@ -12,7 +12,7 @@ function makeTx() { return { executeSql(sql, params) {
   const info = stmt.run(...params); return { rows: { length: 0, item: () => undefined }, insertId: Number(info.lastInsertRowid) }
 } } }
 const fakeDb = { transaction: cb => cb(makeTx()), readTransaction: cb => cb(makeTx()) }
-const sb = { LS: { LocalStorage: { openDatabaseSync: () => fakeDb } }, console: { log(){} }, Date, Math, parseInt, parseFloat, isNaN, JSON }
+const sb = { D: require('./dur.js'), LS: { LocalStorage: { openDatabaseSync: () => fakeDb } }, console: { log(){} }, Date, Math, parseInt, parseFloat, isNaN, JSON }
 vm.createContext(sb)
 vm.runInContext(src + ';globalThis.__S={init,MIGRATIONS,items,itemTags,kinds,itemLogCount,tagTotals,getHabit,unitForHabit}', sb)
 const S = sb.__S

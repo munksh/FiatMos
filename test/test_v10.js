@@ -17,7 +17,7 @@ function makeTx() { return { executeSql(sql, params) {
   const info = stmt.run(...params); return { rows: { length: 0, item: () => undefined }, insertId: Number(info.lastInsertRowid) }
 } } }
 const fakeDb = { transaction: cb => cb(makeTx()), readTransaction: cb => cb(makeTx()) }
-const sb = { LS: { LocalStorage: { openDatabaseSync: () => fakeDb } }, console: { log(){} }, Date, Math, parseInt, parseFloat, isNaN, JSON, Number, String }
+const sb = { D: require('./dur.js'), LS: { LocalStorage: { openDatabaseSync: () => fakeDb } }, console: { log(){} }, Date, Math, parseInt, parseFloat, isNaN, JSON, Number, String }
 vm.createContext(sb)
 vm.runInContext(src + ';globalThis.__S={init,MIGRATIONS,currentVersion,addHabit,getHabit,lastSession,sessionForDay,saveSession,kinds,kindById,addKind,starterKinds,STARTER_KINDS,items,itemById,addItem,things,thingDays,thingStats,dayFacts,setSummary,lastTimeFor,thingSuggestions,thingIdByName,habitThings,habitFacts,workoutWeek,addEntry,loadThings,addThing,updateThing,hasShelf,hasPractice,programs,addRoutine,exportAll,importAll,dayKey,addDays,dayOffsetKey,entriesSince,MEASURES,cleanMeasure,addReferenceEntry,itemsForHabit,kindStats}', sb)
 const S = sb.__S
@@ -176,8 +176,9 @@ ok('bodyweight sets that differ', S.setSummary([{ reps: 5 }, { reps: 4 }, { reps
 ok('bodyweight sets that repeat', S.setSummary([{ reps: 5 }, { reps: 5 }, { reps: 3 }, { reps: 3 }], 'weight_reps') === '2 × 5, 2 × 3 reps')
 ok('no weight yet reads as reps', S.setSummary([{ reps: 12 }, { reps: 12 }], 'weight_reps') === '2 × 12 reps')
 ok('one set', S.setSummary([{ reps: 8, weight: 60 }], 'weight_reps') === '8 reps · 60 kg')
-ok('time', S.setSummary([{ duration: 90 }], 'time') === '1.5 min')
+ok('time', S.setSummary([{ duration: 90 }], 'time') === '1 min 30 s')
 ok('time over sets', S.setSummary([{ duration: 60 }, { duration: 60 }], 'time') === '2 sets · 2 min')
+ok('time said in seconds when it is seconds', S.setSummary([{ duration: 40 }], 'time') === '40 s')
 ok('distance and time', S.setSummary([{ duration: 1680, distance: 5200 }], 'time_distance') === '5.2 km in 28 min')
 ok('only a note', S.setSummary([{ note: 'slow' }], 'weight_reps') === '1 set')
 

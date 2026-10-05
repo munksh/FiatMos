@@ -41,6 +41,7 @@ DISTFILES += \
     qml/Storage.js \
     qml/Lookup.js \
     qml/Measures.js \
+    qml/Durations.js \
     qml/HabitTypes.js \
     qml/LookupSettings.qml \
     qml/FiatMosTheme.qml \
@@ -60,6 +61,7 @@ DISTFILES += \
     qml/components/Shelf.qml \
     qml/components/Sparkline.qml \
     qml/components/SwitchRow.qml \
+    qml/components/TimeInput.qml \
     qml/components/ValueRow.qml \
     qml/cover/CoverPage.qml \
     qml/pages/images/family/harbour-fiatagenda.png \
@@ -91,6 +93,11 @@ DISTFILES += \
     qml/pages/PracticePage.qml \
     qml/pages/ThingPage.qml \
     qml/pages/ThingDialog.qml \
+    qml/pages/ExercisesPage.qml \
+    qml/pages/ProgramsPage.qml \
+    qml/pages/ProgramPage.qml \
+    qml/pages/ProgramNameDialog.qml \
+    qml/pages/ExercisePickerPage.qml \
     rpm/harbour-fiatmos.spec
 
 SAILFISHAPP_ICONS = 86x86 108x108 128x128 172x172

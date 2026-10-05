@@ -1,0 +1,41 @@
+const D = require('./dur.js')
+let fails = 0
+const ok = (n, c, e) => { if (!c) { fails++; console.log('FAIL ' + n + (e !== undefined ? ' -> ' + JSON.stringify(e) : '')) } else console.log('ok   ' + n) }
+const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+
+ok('units are recognised', D.unitSeconds('min') === 60 && D.unitSeconds('Minutes') === 60 && D.unitSeconds('h') === 3600 && D.unitSeconds('timmar') === 3600 && D.unitSeconds('s') === 1 && D.unitSeconds('sek.') === 1)
+ok('a unit that is not a time is not', !D.isTime('kg') && !D.isTime('pages') && !D.isTime('km') && !D.isTime('') && !D.isTime(undefined))
+ok('7 h 30 is said as it is read', D.format(7.5, 'h') === '7 h 30 min', D.format(7.5, 'h'))
+ok('450 min is the same night', D.format(450, 'min') === '7 h 30 min')
+ok('40 seconds', D.format(40, 's') === '40 s' && D.format(2 / 3, 'min') === '40 s', D.format(2 / 3, 'min'))
+ok('a round hour', D.format(1, 'h') === '1 h')
+ok('minutes and seconds', D.format(5.5, 'min') === '5 min 30 s')
+ok('an hour, minutes and seconds', D.format(3910, 's') === '1 h 5 min 10 s')
+ok('nothing is nothing', D.format('', 'min') === '' && D.format(null, 'h') === '')
+ok('not a time is left to the caller', D.format(5, 'kg') === '')
+ok('zero is said', D.format(0, 'min') === '0 s')
+
+ok('default fields follow the unit', D.defaultPreset('h') === 'h,min' && D.defaultPreset('min') === 'min,s' && D.defaultPreset('s') === 'min,s')
+ok('presets are two or three of the three', eq(D.PRESETS, ['h,min', 'min,s', 'h,min,s']) && eq(D.fieldsOf('h,min,s'), ['h', 'min', 's']))
+ok('an unknown preset falls back', eq(D.fieldsOf('weeks'), ['min', 's']))
+
+ok('7.5 h in hours and minutes', eq(D.split(7.5, 'h', ['h', 'min']), { h: '7', min: '30', s: '' }), D.split(7.5, 'h', ['h', 'min']))
+ok('450 min in hours and minutes', eq(D.split(450, 'min', ['h', 'min']), { h: '7', min: '30', s: '' }))
+ok('450 min in minutes and seconds keeps the minutes', eq(D.split(450, 'min', ['min', 's']), { h: '', min: '450', s: '' }))
+ok('40 s in minutes and seconds', eq(D.split(2 / 3, 'min', ['min', 's']), { h: '', min: '', s: '40' }), D.split(2 / 3, 'min', ['min', 's']))
+ok('an hour, 5 minutes, 10 seconds in three fields', eq(D.split(3910, 's', ['h', 'min', 's']), { h: '1', min: '5', s: '10' }))
+ok('what does not fit the smallest field becomes a decimal', D.split(40, 's', ['h', 'min']).min === '0.67', D.split(40, 's', ['h', 'min']))
+ok('empty stays empty', eq(D.split('', 'min', ['min', 's']), { h: '', min: '', s: '' }))
+ok('zero is shown as zero in the first field', D.split(0, 'min', ['min', 's']).min === '0')
+
+ok('7 h 30 written is 7.5 h', D.join({ h: '7', min: '30' }, 'h', ['h', 'min']) === '7.5')
+ok('and 450 min', D.join({ h: '7', min: '30' }, 'min', ['h', 'min']) === '450')
+ok('40 s written is two thirds of a minute', Math.round(Number(D.join({ min: '', s: '40' }, 'min', ['min', 's'])) * 60) === 40)
+ok('a comma is a decimal point', D.join({ h: '7,5', min: '' }, 'h', ['h', 'min']) === '7.5')
+ok('nothing written is nothing', D.join({ h: '', min: '' }, 'h', ['h', 'min']) === '')
+ok('a field that is not shown is not counted', D.join({ h: '9', min: '30', s: '99' }, 'h', ['h', 'min']) === '9.5')
+ok('every value survives a round trip', [0.5, 7.5, 12, 3.25].every(v => Math.abs(Number(D.join(D.split(v, 'h', ['h', 'min', 's']), 'h', ['h', 'min', 's'])) - v) < 1e-5))
+ok('and in seconds', [1, 40, 59, 61, 3599, 3910].every(v => Number(D.join(D.split(v, 's', ['h', 'min', 's']), 's', ['h', 'min', 's'])) === v))
+
+console.log(fails === 0 ? '\nALL PASS' : '\n' + fails + ' FAILURES')
+process.exit(fails ? 1 : 0)

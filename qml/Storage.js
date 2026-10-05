@@ -13,6 +13,7 @@
 
 .pragma library
 .import QtQuick.LocalStorage 2.0 as LS
+.import "Durations.js" as D
 
 var _db = null
 
@@ -262,6 +263,25 @@ var MIGRATIONS = [
             "ALTER TABLE item_kind ADD COLUMN done_word TEXT",
             "UPDATE item_kind SET done_word = 'learned' WHERE done_word IS NULL AND name IN ('repertoire', 'texts')"
         ]
+    },
+    {
+        version: 12,
+        // A program is a list of exercises, in order -- something you can
+        // build before you do it. Until now a program was only a name, and
+        // what it held was whatever you did the last time you ran it.
+        //
+        // A workout stays its own copy: changing a program later changes no
+        // old workout, and changing a workout changes no program unless you
+        // say so. The tables added here are the program's definition, not a
+        // record of anything that happened.
+        //
+        // Programs that already exist are given their list from the last time
+        // they were run, so none of them starts empty.
+        statements: [
+            "CREATE TABLE IF NOT EXISTS routine_item (id INTEGER PRIMARY KEY AUTOINCREMENT, routine_id INTEGER NOT NULL REFERENCES routine(id), item_id INTEGER NOT NULL REFERENCES item(id), sort_order INTEGER NOT NULL DEFAULT 0)",
+            "CREATE INDEX IF NOT EXISTS idx_routine_item ON routine_item(routine_id, sort_order)"
+        ],
+        run: function(tx) { seedPrograms(tx) }
     }
 ]
 
@@ -479,6 +499,13 @@ function allHabits(includeArchived) {
         var r = tx.executeSql(sql)
         for (var i = 0; i < r.rows.length; i++) out.push(rowToHabit(r.rows.item(i)))
     })
+    return out
+}
+
+// The habits that are workouts: the ones a program can belong to.
+function workoutHabits() {
+    var all = allHabits(false), out = []
+    for (var i = 0; i < all.length; i++) if (all[i].valueType === "structured") out.push(all[i])
     return out
 }
 
@@ -1588,6 +1615,205 @@ function addRoutine(habitId, name) {
     return id
 }
 
+// ---------------------------------------------------------------------------
+// Programs -- a list of exercises, in order
+// ---------------------------------------------------------------------------
+
+// Gives every program that has no list yet the exercises of its latest
+// workout, in the order they were done. Fills empty programs only, so it is
+// safe to run again -- which is what import does after an older file.
+function seedPrograms(tx) {
+    var rs = tx.executeSql("SELECT r.id AS id FROM routine r WHERE NOT EXISTS (SELECT 1 FROM routine_item ri WHERE ri.routine_id = r.id) ORDER BY r.id")
+    var ids = []
+    for (var i = 0; i < rs.rows.length; i++) ids.push(rs.rows.item(i).id)
+    for (var j = 0; j < ids.length; j++) {
+        var ss = tx.executeSql("SELECT id FROM session WHERE routine_id = ? ORDER BY started_at DESC, id DESC LIMIT 1", [ids[j]])
+        if (ss.rows.length === 0) continue
+        var cs = tx.executeSql("SELECT item_id FROM component WHERE session_id = ? AND item_id IS NOT NULL ORDER BY sort_order, id", [ss.rows.item(0).id])
+        var seen = {}, n = 0
+        for (var k = 0; k < cs.rows.length; k++) {
+            var it = cs.rows.item(k).item_id
+            if (seen[it]) continue
+            seen[it] = true
+            tx.executeSql("INSERT INTO routine_item (routine_id, item_id, sort_order) VALUES (?, ?, ?)", [ids[j], it, n++])
+        }
+    }
+}
+
+// The exercises of one program, in order: [{ itemId, name, measure }].
+// What has been put away is left out.
+function programItems(routineId) {
+    var out = []
+    db().readTransaction(function(tx) {
+        var r = tx.executeSql("SELECT i.id AS id, i.title AS title, i.measure AS measure, k.measure AS kind_measure FROM routine_item ri JOIN item i ON i.id = ri.item_id LEFT JOIN item_kind k ON k.id = i.kind_id WHERE ri.routine_id = ? AND i.state <> 'archived' ORDER BY ri.sort_order, ri.id", [routineId])
+        for (var i = 0; i < r.rows.length; i++) {
+            var row = r.rows.item(i)
+            out.push({ itemId: row.id, name: row.title,
+                       measure: (row.measure !== null && row.measure !== undefined && row.measure !== "")
+                                ? cleanMeasure(row.measure) : cleanMeasure(row.kind_measure) })
+        }
+    })
+    return out
+}
+
+// The practise kind of a workout habit, made if it has none yet -- the same
+// kind its sessions will give it on the first save.
+function habitPractiseKind(habitId) {
+    var k = -1
+    db().transaction(function(tx) { k = practiseKindForHabit(tx, { id: habitId }) })
+    return k
+}
+
+function programById(routineId) {
+    var p = null
+    db().readTransaction(function(tx) {
+        var r = tx.executeSql("SELECT r.id AS id, r.name AS name, r.habit_id AS habit_id, h.name AS habit_name, h.kind_id AS kind_id FROM routine r JOIN habit h ON h.id = r.habit_id WHERE r.id = ?", [routineId])
+        if (r.rows.length > 0) {
+            var row = r.rows.item(0)
+            p = { id: row.id, name: row.name, habitId: row.habit_id, habitName: row.habit_name,
+                  kindId: (row.kind_id === null || row.kind_id === undefined) ? -1 : row.kind_id }
+        }
+    })
+    return p
+}
+
+function programNameTaken(name, exceptId) {
+    var taken = false
+    var t = tidyName(name)
+    db().readTransaction(function(tx) {
+        var r = tx.executeSql("SELECT id FROM routine WHERE name = ? COLLATE NOCASE", [t])
+        for (var i = 0; i < r.rows.length; i++) if (r.rows.item(i).id !== exceptId) taken = true
+    })
+    return taken
+}
+
+// A new program for a habit, with its exercises (ids of things) in order.
+// -1 if the name is empty or already a program's.
+function addProgram(habitId, name, itemIds) {
+    var t = tidyName(name)
+    if (t === "" || programNameTaken(t, -1)) return -1
+    var id = addRoutine(habitId, t)
+    if (id >= 0 && itemIds !== undefined) setProgramItems(id, itemIds)
+    return id
+}
+
+function renameProgram(routineId, name) {
+    var t = tidyName(name)
+    if (t === "" || programNameTaken(t, routineId)) return false
+    db().transaction(function(tx) {
+        tx.executeSql("UPDATE routine SET name = ? WHERE id = ?", [t, routineId])
+    })
+    return true
+}
+
+// Replaces the list. A program is a definition, not a record, so this is
+// allowed to rewrite it; no workout that was done from it changes.
+function setProgramItems(routineId, itemIds) {
+    db().transaction(function(tx) {
+        tx.executeSql("DELETE FROM routine_item WHERE routine_id = ?", [routineId])
+        var seen = {}, n = 0
+        for (var i = 0; i < itemIds.length; i++) {
+            var it = itemIds[i]
+            if (it === null || it === undefined || it < 0 || seen[it]) continue
+            seen[it] = true
+            tx.executeSql("INSERT INTO routine_item (routine_id, item_id, sort_order) VALUES (?, ?, ?)", [routineId, it, n++])
+        }
+    })
+}
+
+function programHasItem(routineId, itemId) {
+    var has = false
+    db().readTransaction(function(tx) {
+        var r = tx.executeSql("SELECT id FROM routine_item WHERE routine_id = ? AND item_id = ?", [routineId, itemId])
+        has = r.rows.length > 0
+    })
+    return has
+}
+
+// Adds one exercise at the end, unless it is already there.
+function addProgramItem(routineId, itemId) {
+    if (itemId === null || itemId === undefined || itemId < 0 || programHasItem(routineId, itemId)) return
+    db().transaction(function(tx) {
+        var m = tx.executeSql("SELECT MAX(sort_order) AS m FROM routine_item WHERE routine_id = ?", [routineId])
+        var next = (m.rows.item(0).m === null) ? 0 : m.rows.item(0).m + 1
+        tx.executeSql("INSERT INTO routine_item (routine_id, item_id, sort_order) VALUES (?, ?, ?)", [routineId, itemId, next])
+    })
+}
+
+function removeProgramItem(routineId, itemId) {
+    db().transaction(function(tx) {
+        tx.executeSql("DELETE FROM routine_item WHERE routine_id = ? AND item_id = ?", [routineId, itemId])
+    })
+}
+
+// Moves one exercise a step up (-1) or down (1) in the list.
+function moveProgramItem(routineId, itemId, step) {
+    var list = programItems(routineId)
+    var ids = []
+    var at = -1
+    for (var i = 0; i < list.length; i++) { ids.push(list[i].itemId); if (list[i].itemId === itemId) at = i }
+    var to = at + step
+    if (at < 0 || to < 0 || to >= ids.length) return
+    var t = ids[at]; ids[at] = ids[to]; ids[to] = t
+    setProgramItems(routineId, ids)
+}
+
+// Makes a program out of the workout saved for a day: its exercises, in the
+// order they were done, and the workout becomes one from that program. -1 if
+// there is nothing saved for the day or the name is empty or taken.
+function saveAsProgram(habitId, name, day) {
+    var t = tidyName(name)
+    var se = sessionForDay(habitId, day)
+    if (se === null || t === "" || programNameTaken(t, -1)) return -1
+    var ids = []
+    for (var i = 0; i < se.components.length; i++) if (se.components[i].itemId >= 0) ids.push(se.components[i].itemId)
+    var id = addProgram(habitId, t, ids)
+    if (id < 0) return -1
+    db().transaction(function(tx) {
+        tx.executeSql("UPDATE session SET routine_id = ? WHERE id = ?", [id, se.id])
+    })
+    return id
+}
+
+// What a workout from this program starts as, for the day on the page: the
+// program's exercises in order, each with the sets of the last time it was
+// done -- the last workout from this program if it was in it, otherwise the
+// last time it was done at all -- so today has the old numbers to change.
+// Nothing here is written; it is UI state until the page saves.
+// [{ name, itemId, measure, details: [...] }]
+function programStart(routineId, beforeDay) {
+    var prog = programById(routineId)
+    if (prog === null) return []
+    var list = programItems(routineId)
+    var prevByItem = {}
+    db().readTransaction(function(tx) {
+        var q = (beforeDay === undefined || beforeDay === "")
+              ? tx.executeSql("SELECT * FROM session WHERE routine_id = ? ORDER BY started_at DESC, id DESC LIMIT 1", [routineId])
+              : tx.executeSql("SELECT * FROM session WHERE routine_id = ? AND substr(started_at, 1, 10) < ? ORDER BY started_at DESC, id DESC LIMIT 1", [routineId, beforeDay])
+        if (q.rows.length === 0) return
+        var s = loadSessionRow(tx, q.rows.item(0))
+        for (var i = 0; i < s.components.length; i++) {
+            var c = s.components[i]
+            if (c.itemId >= 0 && prevByItem[c.itemId] === undefined) prevByItem[c.itemId] = c.details
+        }
+    })
+    var out = []
+    for (var j = 0; j < list.length; j++) {
+        var details = prevByItem[list[j].itemId]
+        if (details === undefined) {
+            var days = thingDays(list[j].itemId)
+            details = []
+            for (var d = days.length - 1; d >= 0; d--) {
+                if (beforeDay !== undefined && beforeDay !== "" && days[d].day >= beforeDay) continue
+                details = days[d].details
+                break
+            }
+        }
+        out.push({ name: list[j].name, itemId: list[j].itemId, measure: list[j].measure, details: details })
+    }
+    return out
+}
+
 // Everything hanging off one session row. Shared by lastSession and
 // sessionForDay so the two can never disagree about what a session is.
 //
@@ -1973,20 +2199,20 @@ function setSummary(details, measure) {
     var m = cleanMeasure(measure)
     var parts = [], i
     if (m === "time") {
-        var mins = 0
-        for (i = 0; i < details.length; i++) if (details[i].duration) mins += Number(details[i].duration) / 60
-        if (mins <= 0) return details.length === 1 ? "1 set" : details.length + " sets"
-        return details.length > 1 ? details.length + " sets · " + fmt(round1(mins)) + " min" : fmt(round1(mins)) + " min"
+        var secs = 0
+        for (i = 0; i < details.length; i++) if (details[i].duration) secs += Number(details[i].duration)
+        if (secs <= 0) return details.length === 1 ? "1 set" : details.length + " sets"
+        return details.length > 1 ? details.length + " sets · " + D.formatSeconds(secs) : D.formatSeconds(secs)
     }
     if (m === "time_distance") {
-        var tm = 0, km = 0
+        var ts = 0, km = 0
         for (i = 0; i < details.length; i++) {
-            if (details[i].duration) tm += Number(details[i].duration) / 60
+            if (details[i].duration) ts += Number(details[i].duration)
             if (details[i].distance) km += Number(details[i].distance) / 1000
         }
-        if (km > 0 && tm > 0) return fmt(km) + " km in " + fmt(round1(tm)) + " min"
+        if (km > 0 && ts > 0) return fmt(km) + " km in " + D.formatSeconds(ts)
         if (km > 0) return fmt(km) + " km"
-        if (tm > 0) return fmt(round1(tm)) + " min"
+        if (ts > 0) return D.formatSeconds(ts)
         return details.length === 1 ? "1 set" : details.length + " sets"
     }
     // weight times reps
@@ -2306,11 +2532,11 @@ function hasPractice() {
 function programs() {
     var out = []
     db().readTransaction(function(tx) {
-        var r = tx.executeSql("SELECT r.id AS id, r.name AS name, r.habit_id AS habit_id, h.name AS habit_name, COUNT(s.id) AS n, MAX(substr(s.started_at, 1, 10)) AS last FROM routine r JOIN habit h ON h.id = r.habit_id LEFT JOIN session s ON s.routine_id = r.id WHERE h.archived_at IS NULL GROUP BY r.id ORDER BY last DESC, r.name COLLATE NOCASE")
+        var r = tx.executeSql("SELECT r.id AS id, r.name AS name, r.habit_id AS habit_id, h.name AS habit_name, COUNT(s.id) AS n, MAX(substr(s.started_at, 1, 10)) AS last, (SELECT COUNT(*) FROM routine_item ri JOIN item i ON i.id = ri.item_id WHERE ri.routine_id = r.id AND i.state <> 'archived') AS exercises FROM routine r JOIN habit h ON h.id = r.habit_id LEFT JOIN session s ON s.routine_id = r.id WHERE h.archived_at IS NULL GROUP BY r.id ORDER BY last DESC, r.name COLLATE NOCASE")
         for (var i = 0; i < r.rows.length; i++) {
             var row = r.rows.item(i)
             out.push({ id: row.id, name: row.name, habitId: row.habit_id, habitName: row.habit_name,
-                       sessions: row.n, last: row.last === null ? "" : row.last })
+                       sessions: row.n, last: row.last === null ? "" : row.last, exercises: row.exercises })
         }
     })
     return out
@@ -2605,7 +2831,7 @@ function exportAll() {
         exportedAt: localIso(new Date()),
         kinds: [], habits: [], items: [], itemTags: [],
         entries: [], entryItems: [],
-        routines: [], sessions: [], components: [], details: []
+        routines: [], routineItems: [], sessions: [], components: [], details: []
     }
 
     db().readTransaction(function(tx) {
@@ -2691,6 +2917,13 @@ function exportAll() {
                                 name: routines[g].name })
         }
 
+        var ri = rowsOf(tx, "SELECT * FROM routine_item ORDER BY routine_id, sort_order, id")
+        for (var gi = 0; gi < ri.length; gi++) {
+            out.routineItems.push({ routine: look("routine", ri[gi].routine_id),
+                                    item: look("item", ri[gi].item_id),
+                                    sortOrder: ri[gi].sort_order })
+        }
+
         var sessions = remember("session", rowsOf(tx, "SELECT * FROM session ORDER BY id"))
         for (var i2 = 0; i2 < sessions.length; i2++) {
             var se = sessions[i2]
@@ -2759,6 +2992,7 @@ function importAll(data) {
         tx.executeSql("DELETE FROM detail")
         tx.executeSql("DELETE FROM component")
         tx.executeSql("DELETE FROM session")
+        tx.executeSql("DELETE FROM routine_item")
         tx.executeSql("DELETE FROM routine")
         tx.executeSql("DELETE FROM log_entry_item")
         tx.executeSql("DELETE FROM item_tag")
@@ -2864,6 +3098,16 @@ function importAll(data) {
             map.routine[ro.ref] = rr.insertId
         }
 
+        // A program's exercises arrived in schema 12. An older file has only
+        // names, and seedPrograms below gives each its list from its last run.
+        var rItems = data.routineItems || []
+        for (i = 0; i < rItems.length; i++) {
+            var rrid = id("routine", rItems[i].routine)
+            var riid = id("item", rItems[i].item)
+            if (rrid === null || riid === null) continue
+            tx.executeSql("INSERT INTO routine_item (routine_id, item_id, sort_order) VALUES (?, ?, ?)", [rrid, riid, rItems[i].sortOrder || 0])
+        }
+
         var sessions = data.sessions || []
         for (i = 0; i < sessions.length; i++) {
             var se = sessions[i]
@@ -2899,6 +3143,7 @@ function importAll(data) {
         // The same step the migration ran ties them to things now -- it only
         // fills what is empty, so on a newer file it does nothing.
         linkPractise(tx)
+        seedPrograms(tx)
         // And a file from before schema 11 has no done word; the kinds that
         // were always about learning get theirs, as the migration gave them.
         tx.executeSql("UPDATE item_kind SET done_word = 'learned' WHERE done_word IS NULL AND name IN ('repertoire', 'texts')")
