@@ -159,6 +159,9 @@ desktop-file-install --delete-original \
 - Number fields open the number keyboard.
 - History starts with a sentence about the habit.
 - A workout is saved once per day, and statistics no longer count a day twice.
+- The workout page says workout, not session. Its pull-down leads to
+  Workouts, the exercises have a heading of their own, and a workout
+  without a program starts from last time's exercises.
 - Your data is kept. Habits that were on the shelf stay on the shelf; the
   upgrade only adds. Backups now carry exercises and their measures, and
   backups made by earlier versions still import.
