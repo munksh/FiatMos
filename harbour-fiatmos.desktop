@@ -4,7 +4,7 @@ X-Nemo-Application-Type=silica-qt5
 
 # Icon and Exec name the PACKAGE, never the app. What anyone sees is Name=.
 Icon=harbour-fiatmos
-Exec=/usr/bin/harbour-fiatmos
+Exec=harbour-fiatmos
 
 Name=fiat mos
 Comment=Habit tracker where each habit sets its own detail
